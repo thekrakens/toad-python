@@ -1,0 +1,37 @@
+# Core dependencies
+notion-client==2.2.1
+pandas==2.1.4
+numpy==1.24.4
+
+# Visualization
+matplotlib==3.8.2
+plotly==5.17.0
+seaborn==0.13.0
+
+# LLM Integration
+langchain==0.1.0
+langchain-openai==0.0.2
+langchain-anthropic==0.0.1
+langchain-google-genai==0.0.2
+langchain-community==0.0.10
+
+# API clients
+openai==1.6.1
+anthropic==0.8.1
+google-generativeai==0.3.2
+
+# Utilities
+python-dotenv==1.0.0
+click==8.1.7
+pydantic==2.5.2
+PyPDF2==3.0.1
+tabulate==0.9.0
+
+# Web Framework
+flask==2.3.3
+pytz==2023.3
+
+# Development
+pytest==7.4.3
+black==23.12.1
+flake8==6.1.0
