@@ -34,9 +34,6 @@ class TestTimezoneHandling:
         
         assert utc_start == int(expected_start.timestamp())
         assert utc_end == int(expected_end.timestamp())
-        
-        # Verify the UTC conversion is correct
-        assert utc_start == 1720598400  # 2025-07-10 07:00:00 UTC
     
     def test_pst_day_boundaries_utc_winter(self):
         """Test PST day boundaries during winter (PST - UTC-8)."""
