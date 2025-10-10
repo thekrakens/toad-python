@@ -55,6 +55,7 @@ class TaskRelationsManager:
     def _get_planned_tasks(self, tasks_df: pd.DataFrame, target_date: date) -> List[str]:
         """
         Get task IDs for tasks that were planned for the target date.
+        A task is considered planned if the target date falls within its planned date range.
         
         Args:
             tasks_df: DataFrame with task data
@@ -68,33 +69,76 @@ class TaskRelationsManager:
         
         planned_task_ids = []
         
-        # Get PST day boundaries as UTC unix timestamps
+        # Get PST day boundaries as UTC unix timestamps for the target date
         utc_start, utc_end = self._get_pst_day_boundaries_utc(target_date)
         
-        # Check for "Planned Timeline" column (preferred)
-        if 'Planned Timeline' in tasks_df.columns:
-            planned_times = pd.to_datetime(tasks_df['Planned Timeline'], errors='coerce', utc=True)
-            planned_timestamps = (planned_times.astype('int64') // 10**9).fillna(0).astype(int)
-            
-            # Filter tasks whose planned timeline falls within the PST day (in UTC)
-            planned_mask = (
-                (planned_timestamps >= utc_start) & 
-                (planned_timestamps <= utc_end)
-            )
-            
-            planned_task_ids = tasks_df[planned_mask]['page_id'].tolist()
+        # Convert to timestamp for easier comparison
+        target_timestamp = utc_start  # Start of the target day in PST (as UTC timestamp)
         
-        # Alternative: Check for "Planned" column
-        elif 'Planned' in tasks_df.columns:
-            planned_times = pd.to_datetime(tasks_df['Planned'], errors='coerce', utc=True)
-            planned_timestamps = (planned_times.astype('int64') // 10**9).fillna(0).astype(int)
+        # Check for "Planned" column with date ranges
+        if 'Planned' in tasks_df.columns:
+            # The Planned field can be a date range - we need to check if target_date falls within it
+            # The data_extractor should have created planned_start and planned_end columns
             
-            planned_mask = (
-                (planned_timestamps >= utc_start) & 
-                (planned_timestamps <= utc_end)
-            )
-            
-            planned_task_ids = tasks_df[planned_mask]['page_id'].tolist()
+            if 'planned_start' in tasks_df.columns and 'planned_end' in tasks_df.columns:
+                # Use the extracted start/end columns
+                planned_start_times = pd.to_datetime(tasks_df['planned_start'], errors='coerce', utc=True)
+                planned_end_times = pd.to_datetime(tasks_df['planned_end'], errors='coerce', utc=True)
+                
+                planned_start_timestamps = (planned_start_times.astype('int64') // 10**9).fillna(0).astype(int)
+                planned_end_timestamps = (planned_end_times.astype('int64') // 10**9).fillna(0).astype(int)
+                
+                # Task is planned for target_date if: planned_start <= target_date <= planned_end
+                # We check if the target day overlaps with the planned range
+                planned_mask = (
+                    (planned_start_timestamps > 0) &  # Has a valid start
+                    (planned_start_timestamps <= utc_end) &  # Starts before or during target day
+                    (planned_end_timestamps >= utc_start)  # Ends during or after target day
+                )
+                
+                planned_task_ids = tasks_df[planned_mask]['page_id'].tolist()
+            else:
+                # Fallback: just check if the Planned field (as a single date) matches the target date
+                planned_times = pd.to_datetime(tasks_df['Planned'], errors='coerce', utc=True)
+                planned_timestamps = (planned_times.astype('int64') // 10**9).fillna(0).astype(int)
+                
+                # Check if the planned date falls within the target day
+                planned_mask = (
+                    (planned_timestamps >= utc_start) & 
+                    (planned_timestamps <= utc_end)
+                )
+                
+                planned_task_ids = tasks_df[planned_mask]['page_id'].tolist()
+        
+        # Alternative: Check for "Planned Timeline" column
+        elif 'Planned Timeline' in tasks_df.columns:
+            if 'planned_start' in tasks_df.columns and 'planned_end' in tasks_df.columns:
+                # Use the extracted start/end columns
+                planned_start_times = pd.to_datetime(tasks_df['planned_start'], errors='coerce', utc=True)
+                planned_end_times = pd.to_datetime(tasks_df['planned_end'], errors='coerce', utc=True)
+                
+                planned_start_timestamps = (planned_start_times.astype('int64') // 10**9).fillna(0).astype(int)
+                planned_end_timestamps = (planned_end_times.astype('int64') // 10**9).fillna(0).astype(int)
+                
+                # Task is planned for target_date if the range overlaps with the target day
+                planned_mask = (
+                    (planned_start_timestamps > 0) &
+                    (planned_start_timestamps <= utc_end) &
+                    (planned_end_timestamps >= utc_start)
+                )
+                
+                planned_task_ids = tasks_df[planned_mask]['page_id'].tolist()
+            else:
+                # Fallback
+                planned_times = pd.to_datetime(tasks_df['Planned Timeline'], errors='coerce', utc=True)
+                planned_timestamps = (planned_times.astype('int64') // 10**9).fillna(0).astype(int)
+                
+                planned_mask = (
+                    (planned_timestamps >= utc_start) & 
+                    (planned_timestamps <= utc_end)
+                )
+                
+                planned_task_ids = tasks_df[planned_mask]['page_id'].tolist()
         
         return planned_task_ids
     
