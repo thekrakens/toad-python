@@ -12,7 +12,6 @@ from dataclasses import dataclass
 import pytz
 
 from toad.productivity.data_extractor import TaskDataExtractor, TimeEntryExtractor
-from toad.productivity.analytics import TimeBlockAnalytics
 
 logger = logging.getLogger(__name__)
 

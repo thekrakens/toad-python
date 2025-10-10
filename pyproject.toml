@@ -1,0 +1,44 @@
+[project]
+name = "toad-python"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Dylan Morgan",email = "dylanparkermorgan@gmail.com"}
+]
+readme = "README.md"
+requires-python = "~3.11"
+dependencies = [
+    "notion-client (>=2.2.1,<3.0.0)",
+    "pandas (>=2.1.4,<3.0.0)",
+    "numpy (>=1.24.4,<2.0.0)",
+    "matplotlib (>=3.8.2,<4.0.0)",
+    "plotly (>=5.17.0,<6.0.0)",
+    "seaborn (>=0.13.0,<0.14.0)",
+    "langchain (>=0.1.0,<0.2.0)",
+    "langchain-openai (>=0.0.2,<0.0.3)",
+    "langchain-anthropic (>=0.0.1,<0.0.2)",
+    "langchain-google-genai (>=0.0.2,<0.0.3)",
+    "langchain-community (>=0.0.10,<0.0.11)",
+    "openai (>=1.6.1,<2.0.0)",
+    "anthropic (>=0.8.1,<0.9.0)",
+    "google-generativeai (>=0.3.2,<0.4.0)",
+    "python-dotenv (>=1.0.0,<2.0.0)",
+    "click (>=8.1.7,<9.0.0)",
+    "pydantic (>=2.5.2,<3.0.0)",
+    "pypdf2 (>=3.0.1,<4.0.0)",
+    "tabulate (>=0.9.0,<0.10.0)",
+    "flask (>=2.3.3,<3.0.0)",
+    "pytz (>=2023.3,<2024.0)"
+]
+
+[tool.poetry]
+packages = [{include = "toad"}]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+black = "^23.12.1"
+flake8 = "^6.1.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -156,3 +156,25 @@ class TOADNotionClient:
         except APIResponseError as e:
             logger.error(f"Failed to get workspace ID: {e}")
             raise
+
+    def update_page_properties(self, page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update properties of a specific page.
+
+        Args:
+            page_id: The ID of the page to update.
+            properties: A dictionary of properties to update.
+
+        Returns:
+            The updated page object.
+        """
+        try:
+            updated_page = self.client.pages.update(
+                page_id=page_id,
+                properties=properties
+            )
+            logger.info(f"Successfully updated page {page_id}.")
+            return updated_page
+        except APIResponseError as e:
+            logger.error(f"Failed to update page {page_id}: {e}")
+            raise
