@@ -34,6 +34,9 @@ dependencies = [
 [tool.poetry]
 packages = [{include = "toad"}]
 
+[tool.poetry.scripts]
+toad = "toad.cli:main"
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.3"
 black = "^23.12.1"
