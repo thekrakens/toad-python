@@ -211,12 +211,20 @@ class TaskDataExtractor:
             if col in df.columns:
                 df[col] = self._parse_datetime_column(df[col])
         
-        # Handle special date ranges (like Planned Timeline)
+        # Handle special date ranges (like Planned Timeline and Planned)
         if "Planned Timeline" in df.columns:
             df["planned_start"] = df["Planned Timeline"].apply(
                 lambda x: self._extract_date_start(x) if pd.notna(x) else None
             )
             df["planned_end"] = df["Planned Timeline"].apply(
+                lambda x: self._extract_date_end(x) if pd.notna(x) else None
+            )
+        elif "Planned" in df.columns:
+            # Also handle the "Planned" column if it exists (same format as Planned Timeline)
+            df["planned_start"] = df["Planned"].apply(
+                lambda x: self._extract_date_start(x) if pd.notna(x) else None
+            )
+            df["planned_end"] = df["Planned"].apply(
                 lambda x: self._extract_date_end(x) if pd.notna(x) else None
             )
         
