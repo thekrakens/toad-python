@@ -65,13 +65,15 @@ class TOADNotionClient:
             logger.error(f"Failed to retrieve database {db_id}: {e}")
             raise
     
-    def get_database_pages(self, database_id: Optional[str] = None, page_size: int = 100) -> List[Dict[str, Any]]:
+    def get_database_pages(self, database_id: Optional[str] = None, page_size: int = 100, 
+                          filter_dict: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Get all pages from a database.
+        Get all pages from a database with optional filtering.
         
         Args:
             database_id: Database ID to query (uses default if not provided)
             page_size: Number of pages to retrieve per request
+            filter_dict: Optional filter to apply to the query
             
         Returns:
             List of page objects
@@ -93,6 +95,9 @@ class TOADNotionClient:
                 
                 if start_cursor:
                     query_params["start_cursor"] = start_cursor
+                
+                if filter_dict:
+                    query_params["filter"] = filter_dict
                 
                 response = self.client.databases.query(**query_params)
                 

@@ -144,20 +144,33 @@ class TaskDataExtractor:
             logger.error(f"Error extracting property '{prop_name}' of type '{prop_type}': {e}")
             return None
     
-    def extract_tasks_to_dataframe(self, database_id: Optional[str] = None) -> pd.DataFrame:
+    def extract_tasks_to_dataframe(self, database_id: Optional[str] = None, 
+                                  modified_since: Optional[datetime] = None) -> pd.DataFrame:
         """
         Extract all tasks from the database and convert to a pandas DataFrame.
         
         Args:
             database_id: Database ID (uses default if not provided)
+            modified_since: If provided, only fetch tasks modified after this timestamp
             
         Returns:
             DataFrame with cleaned task data
         """
         logger.info("Starting task data extraction...")
         
+        # Build filter for incremental sync
+        filter_dict = None
+        if modified_since:
+            filter_dict = {
+                "timestamp": "last_edited_time",
+                "last_edited_time": {
+                    "after": modified_since.isoformat()
+                }
+            }
+            logger.info(f"Filtering tasks modified after {modified_since.isoformat()}")
+        
         # Get all pages from the database
-        pages = self.client.get_database_pages(database_id)
+        pages = self.client.get_database_pages(database_id, filter_dict=filter_dict)
         logger.info(f"Retrieved {len(pages)} pages from database")
         
         # Get schema for reference
@@ -972,12 +985,14 @@ class TimeEntryExtractor:
         extractor = TaskDataExtractor(self.client)
         return extractor.extract_property_value(prop_data, prop_name)
     
-    def extract_time_entries_to_dataframe(self, database_id: Optional[str] = None) -> pd.DataFrame:
+    def extract_time_entries_to_dataframe(self, database_id: Optional[str] = None,
+                                         modified_since: Optional[datetime] = None) -> pd.DataFrame:
         """
         Extract all time entries from the database and convert to a pandas DataFrame.
         
         Args:
             database_id: Time entries database ID (uses config if not provided)
+            modified_since: If provided, only fetch entries modified after this timestamp
             
         Returns:
             DataFrame with cleaned time entry data
@@ -990,8 +1005,19 @@ class TimeEntryExtractor:
         if not db_id:
             raise ValueError("Time entries database ID not configured. Please set NOTION_TIME_ENTRIES_DATABASE_ID in .env")
         
+        # Build filter for incremental sync
+        filter_dict = None
+        if modified_since:
+            filter_dict = {
+                "timestamp": "last_edited_time",
+                "last_edited_time": {
+                    "after": modified_since.isoformat()
+                }
+            }
+            logger.info(f"Filtering time entries modified after {modified_since.isoformat()}")
+        
         # Get all pages from the time entries database
-        pages = self.client.get_database_pages(db_id)
+        pages = self.client.get_database_pages(db_id, filter_dict=filter_dict)
         logger.info(f"Retrieved {len(pages)} time entry pages from database")
         
         # Get schema for reference

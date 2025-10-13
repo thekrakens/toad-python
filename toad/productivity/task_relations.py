@@ -280,34 +280,7 @@ class TaskRelationsManager:
             
             logger.info(f"Extracted {len(tasks_df)} tasks and {len(time_entries_df)} time entries")
             
-            # Get task IDs for each relation type
-            planned_ids = self._get_planned_tasks(tasks_df, target_date)
-            active_ids = self._get_active_tasks(tasks_df, time_entries_df, target_date)
-            worked_ids = self._get_worked_tasks(time_entries_df, target_date)
-            done_ids = self._get_done_tasks(tasks_df, target_date)
-            
-            logger.info(f"Found: {len(planned_ids)} planned, {len(active_ids)} active, {len(worked_ids)} worked, {len(done_ids)} done")
-            
-            # Find or create Daily Metrics entry for this date
-            metrics_entry_id = self._find_or_create_daily_metrics_entry(target_date)
-            
-            if not metrics_entry_id:
-                return {
-                    "error": "Failed to find or create Daily Metrics entry",
-                    "target_date": str(target_date)
-                }
-            
-            # Update relations
-            result = {
-                "target_date": str(target_date),
-                "metrics_entry_id": metrics_entry_id,
-                "planned": self._update_relation(metrics_entry_id, "Planned", planned_ids),
-                "active": self._update_relation(metrics_entry_id, "Active", active_ids),
-                "worked": self._update_relation(metrics_entry_id, "Worked", worked_ids),
-                "done": self._update_relation(metrics_entry_id, "Done", done_ids)
-            }
-            
-            return result
+            return self._process_relations_with_data(target_date, tasks_df, time_entries_df)
             
         except Exception as e:
             logger.error(f"Error processing task relations: {e}")
@@ -315,6 +288,75 @@ class TaskRelationsManager:
                 "error": str(e),
                 "target_date": str(target_date)
             }
+    
+    def process_daily_task_relations_with_data(self, target_date: date, 
+                                              tasks_df: pd.DataFrame, 
+                                              time_entries_df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Process task relations for a specific date using pre-loaded data.
+        This is more efficient when processing multiple dates.
+        
+        Args:
+            target_date: Date to process relations for
+            tasks_df: Pre-loaded tasks DataFrame
+            time_entries_df: Pre-loaded time entries DataFrame
+            
+        Returns:
+            Dict with results of the operation
+        """
+        logger.info(f"Processing task relations for {target_date} (with cached data)")
+        
+        try:
+            return self._process_relations_with_data(target_date, tasks_df, time_entries_df)
+        except Exception as e:
+            logger.error(f"Error processing task relations: {e}")
+            return {
+                "error": str(e),
+                "target_date": str(target_date)
+            }
+    
+    def _process_relations_with_data(self, target_date: date,
+                                    tasks_df: pd.DataFrame,
+                                    time_entries_df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Internal method to process relations with provided data.
+        
+        Args:
+            target_date: Date to process relations for
+            tasks_df: Tasks DataFrame
+            time_entries_df: Time entries DataFrame
+            
+        Returns:
+            Dict with results of the operation
+        """
+        # Get task IDs for each relation type
+        planned_ids = self._get_planned_tasks(tasks_df, target_date)
+        active_ids = self._get_active_tasks(tasks_df, time_entries_df, target_date)
+        worked_ids = self._get_worked_tasks(time_entries_df, target_date)
+        done_ids = self._get_done_tasks(tasks_df, target_date)
+        
+        logger.info(f"Found: {len(planned_ids)} planned, {len(active_ids)} active, {len(worked_ids)} worked, {len(done_ids)} done")
+        
+        # Find or create Daily Metrics entry for this date
+        metrics_entry_id = self._find_or_create_daily_metrics_entry(target_date)
+        
+        if not metrics_entry_id:
+            return {
+                "error": "Failed to find or create Daily Metrics entry",
+                "target_date": str(target_date)
+            }
+        
+        # Update relations
+        result = {
+            "target_date": str(target_date),
+            "metrics_entry_id": metrics_entry_id,
+            "planned": self._update_relation(metrics_entry_id, "Planned", planned_ids),
+            "active": self._update_relation(metrics_entry_id, "Active", active_ids),
+            "worked": self._update_relation(metrics_entry_id, "Worked", worked_ids),
+            "done": self._update_relation(metrics_entry_id, "Done", done_ids)
+        }
+        
+        return result
     
     def _find_or_create_daily_metrics_entry(self, target_date: date) -> str:
         """
