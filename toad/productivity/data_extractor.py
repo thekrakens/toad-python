@@ -321,10 +321,15 @@ class TaskDataExtractor:
     def _calculate_derived_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate additional derived metrics for analysis."""
         
+        # Return early if dataframe is empty
+        if df.empty:
+            return df
+        
         # Task completion status
-        df["is_completed"] = df["Status"] == "done"
-        df["is_in_progress"] = df["Status"].isin(["doing", "paused"])
-        df["is_todo"] = df["Status"] == "todo"
+        if "Status" in df.columns:
+            df["is_completed"] = df["Status"] == "done"
+            df["is_in_progress"] = df["Status"].isin(["doing", "paused"])
+            df["is_todo"] = df["Status"] == "todo"
         
         # Time-based metrics
         if "Logged Time" in df.columns and "Planned Hrs." in df.columns:
