@@ -1,6 +1,6 @@
 [project]
 name = "toad-python"
-version = "0.1.0"
+version = "0.2.0"
 description = ""
 authors = [
     {name = "Dylan Morgan",email = "dylanparkermorgan@gmail.com"}
