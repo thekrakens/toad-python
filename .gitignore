@@ -44,3 +44,9 @@ htmlcov/
 # IDE-specific folders
 .vscode/
 .idea/
+.claude/
+
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride

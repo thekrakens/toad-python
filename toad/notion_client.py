@@ -65,13 +65,15 @@ class TOADNotionClient:
             logger.error(f"Failed to retrieve database {db_id}: {e}")
             raise
     
-    def get_database_pages(self, database_id: Optional[str] = None, page_size: int = 100) -> List[Dict[str, Any]]:
+    def get_database_pages(self, database_id: Optional[str] = None, page_size: int = 100, 
+                          filter_dict: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Get all pages from a database.
+        Get all pages from a database with optional filtering.
         
         Args:
             database_id: Database ID to query (uses default if not provided)
             page_size: Number of pages to retrieve per request
+            filter_dict: Optional filter to apply to the query
             
         Returns:
             List of page objects
@@ -93,6 +95,9 @@ class TOADNotionClient:
                 
                 if start_cursor:
                     query_params["start_cursor"] = start_cursor
+                
+                if filter_dict:
+                    query_params["filter"] = filter_dict
                 
                 response = self.client.databases.query(**query_params)
                 
@@ -155,4 +160,26 @@ class TOADNotionClient:
             return user_info["id"]
         except APIResponseError as e:
             logger.error(f"Failed to get workspace ID: {e}")
+            raise
+
+    def update_page_properties(self, page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update properties of a specific page.
+
+        Args:
+            page_id: The ID of the page to update.
+            properties: A dictionary of properties to update.
+
+        Returns:
+            The updated page object.
+        """
+        try:
+            updated_page = self.client.pages.update(
+                page_id=page_id,
+                properties=properties
+            )
+            logger.info(f"Successfully updated page {page_id}.")
+            return updated_page
+        except APIResponseError as e:
+            logger.error(f"Failed to update page {page_id}: {e}")
             raise

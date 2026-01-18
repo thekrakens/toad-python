@@ -1,701 +1,303 @@
+#!/usr/bin/env python3
 """
-Command-line interface for TOAD productivity system.
-Handles metrics synchronization and visualization commands.
+TOAD CLI - Simplified command-line interface for TOAD productivity system.
 """
 
 import argparse
-import logging
 import sys
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
+from datetime import datetime, date, timedelta
+import logging
 
 from toad.notion_client import TOADNotionClient
-from toad.config import Config
-from toad.productivity.data_extractor import TaskDataExtractor, TimeBlockExtractor, TimeEntryExtractor
-from toad.productivity.analytics import TimeBlockAnalytics
-from toad.productivity.daily_metrics import DailyMetricsCalculator, DailyMetrics
-from toad.plants.tracker import PlantTracker
-from toad.plants.notion_database import PlantNotionDatabase
+from toad.productivity.task_relations import TaskRelationsManager
+from toad.productivity.data_extractor import TaskDataExtractor, TimeEntryExtractor
+from toad.sync_cache import get_sync_cache
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def setup_toad_system():
-    """Initialize TOAD system components."""
-    if not Config.validate_notion_config():
-        print("❌ Missing Notion configuration. Please check .env file.")
-        sys.exit(1)
+# Date parsing utilities
+def parse_date_flexible(date_str: str) -> date:
+    """
+    Parse a date string in flexible formats.
     
-    client = TOADNotionClient()
-    task_extractor = TaskDataExtractor(client)
-    time_block_extractor = TimeBlockExtractor(client)
-    analytics = TimeBlockAnalytics()
+    Supported formats:
+    - YYYY-MM-DD (2025-10-12)
+    - MM-DD-YY (10-12-25)
+    - MM/DD/YY (10/12/25)
     
-    return client, task_extractor, time_block_extractor, analytics
+    Args:
+        date_str: Date string to parse
+        
+    Returns:
+        Parsed date object
+        
+    Raises:
+        ValueError: If date format is invalid
+    """
+    # Try YYYY-MM-DD format first
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        pass
+    
+    # Try MM-DD-YY format
+    try:
+        return datetime.strptime(date_str, '%m-%d-%y').date()
+    except ValueError:
+        pass
+    
+    # Try MM/DD/YY format
+    try:
+        return datetime.strptime(date_str, '%m/%d/%y').date()
+    except ValueError:
+        pass
+    
+    raise ValueError(f"Invalid date format: {date_str}. Use YYYY-MM-DD, MM-DD-YY, or MM/DD/YY")
 
-def cmd_sync_daily(args):
-    """Sync daily metrics and timeline."""
-    print("🐸 TOAD - Syncing Daily Metrics")
+def parse_date_range(date_args: list) -> list:
+    """
+    Parse date arguments into a list of dates.
     
-    client, task_extractor, time_block_extractor, analytics = setup_toad_system()
+    Args:
+        date_args: List of date strings (0, 1, or 2 elements)
+        
+    Returns:
+        List of date objects
+        
+    Raises:
+        ValueError: If date format is invalid
+    """
+    if not date_args:
+        # No dates provided, use today
+        return [date.today()]
     
-    # Determine target date
-    if args.date:
-        target_date = datetime.strptime(args.date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
-    else:
-        target_date = datetime.now(timezone.utc)
+    if len(date_args) == 1:
+        # Single date
+        return [parse_date_flexible(date_args[0])]
     
-    print(f"📅 Processing metrics for {target_date.date()}")
+    if len(date_args) == 2:
+        # Date range
+        start_date = parse_date_flexible(date_args[0])
+        end_date = parse_date_flexible(date_args[1])
+        
+        if end_date < start_date:
+            raise ValueError(f"End date {end_date} is before start date {start_date}")
+        
+        # Generate list of dates in range
+        date_list = []
+        current_date = start_date
+        while current_date <= end_date:
+            date_list.append(current_date)
+            current_date += timedelta(days=1)
+        
+        return date_list
+    
+    raise ValueError("Too many date arguments. Provide either 1 date or 2 dates (start and end)")
+
+def cmd_sync(args):
+    """
+    Simplified sync command with 3 modes:
+    1. Default (incremental): toad sync
+    2. Date sync: toad sync 10-12-25 or toad sync 10-10-25 10-12-25
+    3. Full sync: toad sync --full
+    """
+    print("🐸 TOAD - Productivity Data Sync")
+    
+    # Initialize components
+    notion_client = TOADNotionClient()
+    sync_cache = get_sync_cache()
+    
+    # Handle --clear-cache flag
+    if args.clear_cache:
+        print("🗑️  Clearing sync cache...")
+        sync_cache.clear_all()
+        print("✅ Cache cleared successfully")
+        return
     
     try:
-        # Extract data
-        print("📊 Extracting task data...")
-        tasks_df = task_extractor.extract_tasks_to_dataframe()
-        print(f"✅ Extracted {len(tasks_df)} tasks")
-        
-        # Extract time blocks if configured
-        time_blocks_df = None
-        if Config.validate_time_blocks_config():
-            print("⏰ Extracting time block data...")
-            time_blocks_df = time_block_extractor.extract_time_blocks_to_dataframe()
-            print(f"✅ Extracted {len(time_blocks_df)} time blocks")
-        else:
-            print("⚠️  Time blocks database not configured, using task data only")
-            import pandas as pd
-            time_blocks_df = pd.DataFrame()
-        
-        # Calculate metrics
-        print("🧮 Calculating daily metrics...")
-        calculator = DailyMetricsCalculator(tasks_df, time_blocks_df)
-        metrics = calculator.calculate_metrics_for_date(target_date)
-        
-        # Display key metrics
-        print(f"\n📊 Daily Metrics Summary for {target_date.date()}:")
-        print(f"  🎯 Daily Productivity Score: {metrics.productivity_score}")
-        print(f"  ✅ Task Completion Rate: {metrics.task_completion_rate_pct}%")
-        print(f"  📅 Schedule Adherence: {metrics.schedule_adherence_pct}%") 
-        print(f"  ⚡ Efficiency Score: {metrics.schedule_adherence_pct}") # Placeholder
-        print(f"  ⏰ Work Hours Achieved: {metrics.effective_hours_worked}")
-        
-        print("\n🎉 Daily metrics sync complete!")
-        
-    except Exception as e:
-        logger.error(f"Daily sync failed: {e}")
-        print(f"❌ Sync failed: {e}")
-        sys.exit(1)
-
-def cmd_sync_timeline(args):
-    """Generate and sync timeline visualization only."""
-    print("🐸 TOAD - Generating Timeline Visualization")
-    print("⚠️  This command is deprecated and will be removed in a future version.")
-
-def cmd_create_database(args):
-    """Create the Daily Productivity Metrics database."""
-    print("🐸 TOAD - Creating Daily Productivity Metrics Database")
-    print("⚠️  This command is deprecated and will be removed in a future version.")
-
-def cmd_test_analytics(args):
-    """Test analytics functionality."""
-    print("🐸 TOAD - Testing Analytics")
-    
-    client, task_extractor, time_block_extractor, analytics = setup_toad_system()
-    
-    try:
-        # Extract data
-        print("📊 Extracting data...")
-        tasks_df = task_extractor.extract_tasks_to_dataframe()
-        print(f"✅ Extracted {len(tasks_df)} tasks")
-        
-        if Config.validate_time_blocks_config():
-            time_blocks_df = time_block_extractor.extract_time_blocks_to_dataframe()
-            print(f"✅ Extracted {len(time_blocks_df)} time blocks")
-        else:
-            print("⚠️  Using sample time block data for testing")
-            import pandas as pd
-            time_blocks_df = pd.DataFrame()
-        
-        # Calculate metrics
-        print("🧮 Testing metrics calculation...")
-        calculator = DailyMetricsCalculator(tasks_df, time_blocks_df)
-        target_date = datetime.now(timezone.utc)
-        metrics = calculator.calculate_metrics_for_date(target_date)
-        
-        print("✅ Metrics calculation successful!")
-        print(f"  🎯 Daily Productivity Score: {metrics.productivity_score}")
-        print(f"  ✅ Task Completion Rate: {metrics.task_completion_rate_pct}%")
-        print(f"  📅 Schedule Adherence: {metrics.schedule_adherence_pct}%")
-        print(f"  ⏰ Work Hours Achieved: {metrics.effective_hours_worked}")
-        
-        print("🎉 Analytics test complete!")
-        
-    except Exception as e:
-        logger.error(f"Analytics test failed: {e}")
-        print(f"❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-def cmd_plants_status(args):
-    """Show plant watering status from Notion."""
-    print("🐸 TOAD - Plant Watering Status")
-    
-    try:
-        if not Config.validate_notion_config():
-            print("❌ Missing Notion configuration. Please check .env file.")
-            sys.exit(1)
-        
-        client = TOADNotionClient()
-        notion_db = PlantNotionDatabase(client.client)
-        
-        # Show quick status
-        stats = notion_db.get_dashboard_stats()
-        
-        print(f"\n📊 Quick Status:")
-        print(f"Total Plants: {stats.get('total_plants', 0)}")
-        print(f"Need Watering: {stats.get('needs_watering', 0)}")
-        print(f"Watered Today: {stats.get('watered_today', 0)}")
-        if stats.get('average_moisture'):
-            print(f"Average Moisture: {stats['average_moisture']}/9")
-        
-        if stats.get('needs_watering', 0) > 0:
-            print(f"\n💧 Plants needing water:")
-            plants_needing_water = notion_db.get_plants_needing_water()
-            
-            for plant in plants_needing_water[:5]:  # Show top 5
-                urgency_icon = "🚨" if "Urgent" in plant['urgency'] else "⚠️" if "Soon" in plant['urgency'] else "💧"
-                moisture_str = str(plant['moisture']) if plant['moisture'] else 'N/A'
-                days_str = str(plant['days_since_watered']) if plant['days_since_watered'] else 'N/A'
-                print(f"  {urgency_icon} {plant['name']} (moisture: {moisture_str}, {days_str} days ago)")
-            
-            if len(plants_needing_water) > 5:
-                print(f"  ... and {len(plants_needing_water) - 5} more")
-        
-        print(f"\n💡 View full details in your Notion Plants database")
-        
-    except Exception as e:
-        print(f"❌ Plant status failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-def cmd_plants_import(args):
-    """Import plants from checklist to Notion."""
-    print("🐸 TOAD - Import Plant Checklist to Notion")
-    
-    try:
-        if not Config.validate_notion_config():
-            print("❌ Missing Notion configuration. Please check .env file.")
-            sys.exit(1)
-        
-        client = TOADNotionClient()
-        notion_db = PlantNotionDatabase(client.client)
-        
-        # Read checklist from file or stdin
-        if args.file:
-            with open(args.file, 'r') as f:
-                checklist_text = f.read()
-        else:
-            print("Enter your plant checklist (Ctrl+D when done):")
-            checklist_text = sys.stdin.read()
-        
-        result = notion_db.import_from_checklist(checklist_text)
-        
-        print(f"✅ {result['message']}")
-        print(f"Database ID: {result['database_id']}")
-        
-        # Show quick status after import
-        stats = notion_db.get_dashboard_stats()
-        if stats.get('needs_watering', 0) > 0:
-            print(f"\n💧 {stats['needs_watering']} plants need watering")
-            
-    except Exception as e:
-        print(f"❌ Import failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-def cmd_plants_water(args):
-    """Record watering for a plant."""
-    print("🐸 TOAD - Record Plant Watering")
-    
-    try:
-        tracker = PlantTracker()
-        
-        success = tracker.water_plant(
-            name=args.name,
-            amount=args.amount,
-            moisture_before=args.moisture_before,
-            moisture_after=args.moisture_after,
-            notes=args.notes
-        )
-        
-        if success:
-            print(f"✅ Recorded watering for {args.name}")
-            
-            # Show updated plant status
-            plant_list = tracker.list_plants()
-            plant_info = next((p for p in plant_list if p['name'] == args.name), None)
-            if plant_info:
-                next_watering = plant_info['next_watering']
-                if next_watering:
-                    print(f"💡 Next watering estimated: {next_watering}")
-        else:
-            print(f"❌ Plant '{args.name}' not found")
-            
-    except Exception as e:
-        print(f"❌ Recording watering failed: {e}")
-        sys.exit(1)
-
-def cmd_plants_add(args):
-    """Add a new plant."""
-    print("🐸 TOAD - Add New Plant")
-    
-    try:
-        tracker = PlantTracker()
-        
-        plant = tracker.add_plant(
-            name=args.name,
-            species=args.species,
-            location=args.location,
-            watering_frequency_days=args.frequency,
-            current_moisture=args.moisture
-        )
-        
-        print(f"✅ Added plant: {plant.name}")
-        if plant.species:
-            print(f"Species: {plant.species}")
-        if plant.location:
-            print(f"Location: {plant.location}")
-        print(f"Watering frequency: {plant.watering_frequency_days} days")
-        
-    except Exception as e:
-        print(f"❌ Adding plant failed: {e}")
-        sys.exit(1)
-
-def cmd_plants_list(args):
-    """List all plants."""
-    print("🐸 TOAD - Plant List")
-    
-    try:
-        tracker = PlantTracker()
-        plants = tracker.list_plants()
-        
-        if not plants:
-            print("No plants in database. Use 'toad plants import' or 'toad plants add' to get started.")
-            return
-        
-        from tabulate import tabulate
-        
-        table_data = []
-        for plant in plants:
-            moisture_str = str(plant['moisture']) if plant['moisture'] else 'N/A'
-            days_since = plant['days_since_watered'] if plant['days_since_watered'] is not None else 'Never'
-            next_water = plant['next_watering'].strftime('%m/%d') if plant['next_watering'] else 'TBD'
-            
-            table_data.append([
-                plant['name'],
-                plant['species'] or 'Unknown',
-                moisture_str,
-                days_since,
-                next_water,
-                plant['urgency'].upper()
-            ])
-        
-        headers = ['Name', 'Species', 'Moisture', 'Days Since', 'Next Water', 'Urgency']
-        print(tabulate(table_data, headers=headers, tablefmt='grid'))
-        
-    except Exception as e:
-        print(f"❌ Listing plants failed: {e}")
-        sys.exit(1)
-
-def cmd_plants_create_database(args):
-    """Create the Plants database in Notion."""
-    print("🐸 TOAD - Creating Plants Database")
-    
-    try:
-        if not Config.validate_notion_config():
-            print("❌ Missing Notion configuration. Please check .env file.")
-            sys.exit(1)
-        
-        client = TOADNotionClient()
-        notion_db = PlantNotionDatabase(client.client)
-        
-        database_id = notion_db.create_plants_database()
-        
-        print(f"✅ Created Plants database")
-        print(f"📊 Database ID: {database_id}")
-        print(f"💡 Add this to your .env file: NOTION_PLANTS_DATABASE_ID={database_id}")
-        
-    except Exception as e:
-        print(f"❌ Database creation failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-def cmd_plants_create_tasks(args):
-    """Create watering tasks for plants that need water."""
-    print("🐸 TOAD - Creating Plant Watering Tasks")
-    
-    try:
-        if not Config.validate_notion_config():
-            print("❌ Missing Notion configuration. Please check .env file.")
-            sys.exit(1)
-        
-        client = TOADNotionClient()
-        notion_db = PlantNotionDatabase(client.client)
-        
-        # Determine target date
-        if args.date:
-            from datetime import date
-            target_date = date.fromisoformat(args.date)
-        else:
-            from datetime import date
-            target_date = date.today()
-        
-        print(f"📅 Creating watering tasks for {target_date}")
-        
-        # Create tasks
-        created_count = notion_db.create_watering_tasks(target_date)
-        
-        if created_count > 0:
-            print(f"✅ Created {created_count} watering tasks")
-            print(f"💡 Check your tasks database for new watering tasks")
-        else:
-            print("🎉 No plants need watering today, or tasks already exist")
-        
-    except Exception as e:
-        print(f"❌ Task creation failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-def cmd_metrics_sync(args):
-    """Calculate and sync daily metrics to Notion."""
-    print("🐸 TOAD - Daily Metrics Sync")
-    
-    # Use hardcoded database ID for now
-    METRICS_DATABASE_ID = "2352579666bd8017a464c1a7d32d35c4"
-    
-    try:
-        # Initialize TOAD system
-        client, task_extractor, time_block_extractor, analytics = setup_toad_system()
-        
-        # Determine target date
-        if args.date:
-            target_date = datetime.strptime(args.date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
-        else:
-            target_date = datetime.now(timezone.utc)
-        
-        print(f"📅 Processing metrics for {target_date.date()}")
-        
-        # Extract data
-        print("📊 Extracting task data...")
-        tasks_df = task_extractor.extract_tasks_to_dataframe()
-        print(f"✅ Extracted {len(tasks_df)} tasks")
-        
-        # Extract time blocks if configured
-        time_blocks_df = None
-        if Config.validate_time_blocks_config():
-            print("⏰ Extracting time block data...")
-            time_blocks_df = time_block_extractor.extract_time_blocks_to_dataframe()
-            print(f"✅ Extracted {len(time_blocks_df)} time blocks")
-        else:
-            print("⚠️  Time blocks database not configured, using task data only")
-            import pandas as pd
-            time_blocks_df = pd.DataFrame()
-        
-        # Extract time entries if configured
-        time_entries_df = None
-        if Config.validate_time_entries_config():
-            print("⏰ Extracting time entry data...")
-            time_entry_extractor = TimeEntryExtractor(client)
-            time_entries_df = time_entry_extractor.extract_time_entries_to_dataframe()
-            print(f"✅ Extracted {len(time_entries_df)} time entries")
-        else:
-            print("⚠️  Time entries database not configured, using task data only")
-            import pandas as pd
-            time_entries_df = pd.DataFrame()
-
-        # Calculate metrics using our new calculator
-        print("🧮 Calculating daily metrics...")
-        calculator = DailyMetricsCalculator(tasks_df, time_blocks_df, time_entries_df)
-        daily_metrics = calculator.calculate_metrics_for_date(target_date)
-        
-        # Display results
-        print(f"\n📊 Daily Metrics for {target_date.date()}:")
-        print(f"  📋 Planned Working Hours: {daily_metrics.planned_working_hours}")
-        print(f"  ⏰ Effective Hours Worked: {daily_metrics.effective_hours_worked}")
-        print(f"  📈 Time on Planned Tasks: {daily_metrics.time_on_planned_tasks}h")
-        print(f"  📉 Time on Unplanned Tasks: {daily_metrics.time_on_unplanned_tasks}h")
-        print(f"  📊 Planned vs Unplanned: {daily_metrics.planned_vs_unplanned_pct}%")
-        print(f"  📋 Tasks Planned Count: {daily_metrics.tasks_planned_count}")
-        print(f"  🎯 Tasks Active Count: {daily_metrics.tasks_active_count}")
-        print(f"  🆕 Unplanned Tasks Created: {daily_metrics.unplanned_tasks_created}")
-        print(f"  🧊 Cold Tasks Count: {daily_metrics.cold_tasks_count}")
-        print(f"  🎯 Productivity Score: {daily_metrics.productivity_score}")
-        print(f"  📅 Schedule Adherence: {daily_metrics.schedule_adherence_pct}%")
-        print(f"  ✅ Task Completion Rate: {daily_metrics.task_completion_rate_pct}%")
-        print(f"  🔄 Context Switches: {daily_metrics.context_switches}")
-        
-        # Sync to Notion unless dry run
-        if not args.dry_run:
-            print(f"\n☁️  Syncing to Notion database...")
-            database_id = args.database_id or METRICS_DATABASE_ID
-            
-            # Use upsert to create or update existing entry
-            result = calculator.upsert_metrics_to_notion(daily_metrics, database_id, client)
-            
-            action_msg = "updated" if result["action"] == "updated" else "synced"
-            print(f"✅ Metrics {action_msg} successfully!")
-            print(f"📄 Notion page: {result['url']}")
-            
-            if result["action"] == "updated":
-                print(f"🔄 Updated existing entry for {target_date.date()}")
+        # Determine sync mode
+        if args.full:
+            # MODE 3: Full Sync
+            print("🔄 Mode: Full Sync (last 30 days)")
+            dates = []
+            current_date = date.today()
+            for i in range(30):
+                dates.append(current_date - timedelta(days=i))
+            dates.reverse()
+            use_cache = False
+            print(f"📅 Syncing {len(dates)} days")
+        elif args.dates:
+            # MODE 2: Date Sync
+            dates = parse_date_range(args.dates)
+            use_cache = True
+            if len(dates) == 1:
+                print(f"🔄 Mode: Date Sync")
+                print(f"📅 Syncing for {dates[0]}")
             else:
-                print(f"🆕 Created new entry for {target_date.date()}")
+                print(f"🔄 Mode: Date Range Sync")
+                print(f"📅 Syncing {dates[0]} to {dates[-1]} ({len(dates)} days)")
         else:
-            print(f"\n🏃 Dry run mode - metrics calculated but not synced")
+            # MODE 1: Default Incremental Sync (today only)
+            dates = [date.today()]
+            use_cache = True
+            print(f"🔄 Mode: Incremental Sync (today only)")
+            print(f"📅 Syncing for {dates[0]}")
         
-        print(f"\n🎉 Daily metrics sync complete!")
+        # Check cache for last sync times
+        last_task_sync = sync_cache.get_last_sync_time('tasks')
+        last_entry_sync = sync_cache.get_last_sync_time('time_entries')
         
-    except Exception as e:
-        logger.error(f"Metrics sync failed: {e}")
-        print(f"❌ Sync failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-def cmd_metrics_test(args):
-    """Test metrics calculation without syncing."""
-    print("🐸 TOAD - Metrics Calculation Test")
-    
-    try:
-        # Initialize TOAD system
-        client, task_extractor, time_block_extractor, analytics = setup_toad_system()
-        
-        # Determine target date
-        if args.date:
-            target_date = datetime.strptime(args.date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        if use_cache and last_task_sync and last_entry_sync:
+            print(f"⏱️  Last sync: tasks={last_task_sync.strftime('%Y-%m-%d %H:%M:%S')}, entries={last_entry_sync.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"📥 Fetching only modified data...")
         else:
-            target_date = datetime.now(timezone.utc)
+            print(f"� Fetching all data (no cache or full sync)...")
         
-        print(f"📅 Testing metrics for {target_date.date()}")
+        # Fetch data (with cache if available)
+        task_extractor = TaskDataExtractor(notion_client)
+        time_entry_extractor = TimeEntryExtractor(notion_client)
         
-        # Extract data
-        print("📊 Extracting data...")
-        tasks_df = task_extractor.extract_tasks_to_dataframe()
-        print(f"✅ Extracted {len(tasks_df)} tasks")
+        if use_cache and not args.full:
+            # Use cache timestamps for incremental fetch
+            tasks_df = task_extractor.extract_tasks_to_dataframe(
+                modified_since=last_task_sync
+            )
+            time_entries_df = time_entry_extractor.extract_time_entries_to_dataframe(
+                modified_since=last_entry_sync
+            )
+        else:
+            # Full fetch (ignore cache)
+            tasks_df = task_extractor.extract_tasks_to_dataframe()
+            time_entries_df = time_entry_extractor.extract_time_entries_to_dataframe()
         
-        # Show sample task data structure
-        if not tasks_df.empty:
-            print(f"📋 Available task columns: {list(tasks_df.columns)}")
+        print(f"✅ Loaded {len(tasks_df)} tasks and {len(time_entries_df)} time entries")
+        
+        # Process task relations for each date
+        relations_manager = TaskRelationsManager(notion_client)
+        
+        total_relations = 0
+        errors = []
+        
+        for target_date in dates:
+            result = relations_manager.process_daily_task_relations_with_data(
+                target_date, tasks_df, time_entries_df
+            )
             
-        # Extract time blocks if configured
-        time_blocks_df = None
-        if Config.validate_time_blocks_config():
-            time_blocks_df = time_block_extractor.extract_time_blocks_to_dataframe()
-            print(f"✅ Extracted {len(time_blocks_df)} time blocks")
-            if not time_blocks_df.empty:
-                print(f"⏰ Available time block columns: {list(time_blocks_df.columns)}")
-        else:
-            print("⚠️  Time blocks database not configured")
-            import pandas as pd
-            time_blocks_df = pd.DataFrame()
+            if "error" in result:
+                error_msg = f"{target_date}: {result['error']}"
+                print(f"  ❌ {error_msg}")
+                errors.append(error_msg)
+            else:
+                # Count total tasks across all relation types
+                task_count = sum(
+                    result[rel_type]['task_count'] 
+                    for rel_type in ['planned', 'active', 'worked', 'done']
+                    if result[rel_type]['success']
+                )
+                total_relations += task_count
+                print(f"  ✅ {target_date}: {task_count} task relations updated")
         
-        # Test metrics calculation
-        print("🧮 Testing metrics calculation...")
-        calculator = DailyMetricsCalculator(tasks_df, time_blocks_df)
-        daily_metrics = calculator.calculate_metrics_for_date(target_date)
+        # Update cache timestamps
+        if not args.full and errors == []:
+            # Only update cache if no errors occurred
+            sync_cache.update_last_sync_time('tasks')
+            sync_cache.update_last_sync_time('time_entries')
+            print(f"💾 Cache updated")
+        elif args.full:
+            # Reset cache for full sync
+            sync_cache.update_last_sync_time('tasks')
+            sync_cache.update_last_sync_time('time_entries')
+            print(f"💾 Cache reset")
         
-        print("✅ Metrics calculation successful!")
+        # Display summary
+        print(f"\n🎉 Sync complete!")
+        print(f"  📋 Dates processed: {len(dates) - len(errors)}/{len(dates)}")
+        print(f"  📊 Total relations updated: {total_relations}")
         
-        # Show detailed results
-        print(f"\n📊 Complete Metrics Breakdown:")
-        metrics_dict = {
-            "Date": daily_metrics.date.date(),
-            "Planned Working Hours": daily_metrics.planned_working_hours,
-            "Effective Hours Worked": daily_metrics.effective_hours_worked,
-            "Time on Planned Tasks": daily_metrics.time_on_planned_tasks,
-            "Time on Unplanned Tasks": daily_metrics.time_on_unplanned_tasks,
-            "Planned vs Unplanned %": daily_metrics.planned_vs_unplanned_pct,
-            "Tasks Planned Count": daily_metrics.tasks_planned_count,
-            "Tasks Active Count": daily_metrics.tasks_active_count,
-            "Unplanned Tasks Created": daily_metrics.unplanned_tasks_created,
-            "Cold Tasks Count": daily_metrics.cold_tasks_count,
-            "Productivity Score": daily_metrics.productivity_score,
-            "Schedule Adherence %": daily_metrics.schedule_adherence_pct,
-            "Task Completion Rate %": daily_metrics.task_completion_rate_pct,
-            "Context Switches": daily_metrics.context_switches
-        }
+        if errors:
+            print(f"\n⚠️  {len(errors)} errors encountered:")
+            for error in errors[:5]:
+                print(f"  • {error}")
+            if len(errors) > 5:
+                print(f"  ... and {len(errors) - 5} more")
         
-        for key, value in metrics_dict.items():
-            print(f"  {key}: {value}")
-        
-        print(f"\n🎉 Metrics test complete!")
-        
-    except Exception as e:
-        logger.error(f"Metrics test failed: {e}")
-        print(f"❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
+    except ValueError as e:
+        print(f"❌ {e}")
         sys.exit(1)
-
-def cmd_web_dashboard(args):
-    """Start the web dashboard server."""
-    print("🐸 TOAD - Starting Web Dashboard")
-    
-    try:
-        if not Config.validate_notion_config():
-            print("❌ Missing Notion configuration. Please check .env file.")
-            sys.exit(1)
-        
-        # Import Flask app
-        from toad.web.app import app
-        
-        host = args.host or '0.0.0.0'
-        port = args.port or 5000
-        debug = args.debug or False
-        
-        print(f"🌐 Starting TOAD web dashboard...")
-        print(f"📡 Server: http://{host}:{port}")
-        print(f"🔗 Timeline URL: http://{host}:{port}/dashboard/timeline/2025-07-19")
-        print(f"📊 Weekly URL: http://{host}:{port}/dashboard/weekly/2025-W29")
-        print()
-        print("💡 For Notion embedding:")
-        print(f"   Copy URL: http://{host}:{port}/dashboard/timeline/{{DATE}}")
-        print("   Use /embed command in Notion to embed the dashboard")
-        print()
-        print("🛑 Press Ctrl+C to stop the server")
-        print()
-        
-        # Start the Flask development server
-        app.run(host=host, port=port, debug=debug)
-        
-    except KeyboardInterrupt:
-        print("\n🛑 Dashboard server stopped")
     except Exception as e:
-        print(f"❌ Failed to start dashboard: {e}")
+        logger.error(f"Sync failed: {e}")
+        print(f"❌ Sync failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
 
 def main():
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description='🐸 TOAD Productivity Analytics CLI')
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    parser = argparse.ArgumentParser(
+        description='🐸 TOAD Productivity Analytics CLI',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Incremental sync (today only, uses cache)
+  toad sync
+  
+  # Sync specific date
+  toad sync 10-12-25
+  
+  # Sync date range
+  toad sync 10-10-25 10-12-25
+  
+  # Full sync (last 30 days, ignores cache)
+  toad sync --full
+  
+  # Clear cache
+  toad sync --clear-cache
+
+Performance Targets:
+  - Incremental sync: 2-5 seconds
+  - Date sync: 5-10 seconds per date
+  - Full sync: 20-30 seconds
+        """
+    )
     
-    # Sync daily metrics
-    sync_daily = subparsers.add_parser('sync-daily', help='Sync daily metrics and timeline')
-    sync_daily.add_argument('--date', help='Date to process (YYYY-MM-DD), defaults to today')
-    sync_daily.add_argument('--local-only', action='store_true', help='Calculate metrics locally only')
-    sync_daily.add_argument('--save-local', action='store_true', help='Save timeline image locally')
-    sync_daily.set_defaults(func=cmd_sync_daily)
-    
-    # Generate timeline only
-    timeline = subparsers.add_parser('timeline', help='Generate timeline visualization')
-    timeline.add_argument('--date', help='Date to visualize (YYYY-MM-DD), defaults to today')
-    timeline.add_argument('--output', help='Output file path')
-    timeline.set_defaults(func=cmd_sync_timeline)
-    
-    # Create database
-    create_db = subparsers.add_parser('create-database', help='Create Daily Productivity Metrics database')
-    create_db.set_defaults(func=cmd_create_database)
-    
-    # Test analytics
-    test = subparsers.add_parser('test', help='Test analytics functionality')
-    test.add_argument('--with-viz', action='store_true', help='Include visualization test')
-    test.set_defaults(func=cmd_test_analytics)
-    
-    # Plant tracking commands
-    plants = subparsers.add_parser('plants', help='Plant watering management')
-    plants_sub = plants.add_subparsers(dest='plants_command', help='Plant commands')
-    
-    # Plant status
-    status = plants_sub.add_parser('status', help='Show plant watering status')
-    status.add_argument('--report', action='store_true', help='Generate full report')
-    status.set_defaults(func=cmd_plants_status)
-    
-    # Import from checklist
-    import_cmd = plants_sub.add_parser('import', help='Import plants from checklist')
-    import_cmd.add_argument('--file', help='File containing checklist (defaults to stdin)')
-    import_cmd.set_defaults(func=cmd_plants_import)
-    
-    # Record watering
-    water = plants_sub.add_parser('water', help='Record watering for a plant')
-    water.add_argument('name', help='Plant name')
-    water.add_argument('--amount', help='Amount watered (e.g., "2.5 jugs")')
-    water.add_argument('--moisture-before', type=int, help='Moisture before watering (1-9)')
-    water.add_argument('--moisture-after', type=int, help='Moisture after watering (1-9)')
-    water.add_argument('--notes', help='Additional notes')
-    water.set_defaults(func=cmd_plants_water)
-    
-    # Add new plant
-    add = plants_sub.add_parser('add', help='Add a new plant')
-    add.add_argument('name', help='Plant name')
-    add.add_argument('--species', help='Plant species')
-    add.add_argument('--location', help='Plant location')
-    add.add_argument('--frequency', type=int, default=7, help='Watering frequency in days (default: 7)')
-    add.add_argument('--moisture', type=int, help='Current moisture level (1-9)')
-    add.set_defaults(func=cmd_plants_add)
-    
-    # List plants
-    list_cmd = plants_sub.add_parser('list', help='List all plants')
-    list_cmd.set_defaults(func=cmd_plants_list)
-    
-    # Create database
-    create_db = plants_sub.add_parser('create-database', help='Create Plants database in Notion')
-    create_db.set_defaults(func=cmd_plants_create_database)
-    
-    # Create daily tasks
-    create_tasks = plants_sub.add_parser('create-tasks', help='Create watering tasks for today')
-    create_tasks.add_argument('--date', help='Date to create tasks for (YYYY-MM-DD), defaults to today')
-    create_tasks.set_defaults(func=cmd_plants_create_tasks)
-    
-    # Metrics sync commands
-    metrics = subparsers.add_parser('metrics', help='Daily productivity metrics sync')
-    metrics_sub = metrics.add_subparsers(dest='metrics_command', help='Metrics commands')
-    
-    # Sync metrics
-    sync_metrics = metrics_sub.add_parser('sync', help='Calculate and sync daily metrics to Notion')
-    sync_metrics.add_argument('--date', help='Date to sync (YYYY-MM-DD), defaults to today')
-    sync_metrics.add_argument('--database-id', help='Override metrics database ID')
-    sync_metrics.add_argument('--dry-run', action='store_true', help='Calculate metrics without syncing to Notion')
-    sync_metrics.set_defaults(func=cmd_metrics_sync)
-    
-    # Test metrics calculation
-    test_metrics = metrics_sub.add_parser('test', help='Test metrics calculation')
-    test_metrics.add_argument('--date', help='Date to test (YYYY-MM-DD), defaults to today')
-    test_metrics.set_defaults(func=cmd_metrics_test)
-    
-    # Web dashboard command
-    web = subparsers.add_parser('web', help='Start web dashboard server')
-    web.add_argument('--host', default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
-    web.add_argument('--port', type=int, default=5000, help='Port to bind to (default: 5000)')
-    web.add_argument('--debug', action='store_true', help='Enable debug mode')
-    web.set_defaults(func=cmd_web_dashboard)
+    # Main sync command (now the only command)
+    parser.add_argument(
+        'command',
+        nargs='?',
+        default='sync',
+        help='Command to run (currently only "sync" is supported)'
+    )
+    parser.add_argument(
+        'dates', 
+        nargs='*', 
+        help='Date(s) to sync. Formats: YYYY-MM-DD, MM-DD-YY, MM/DD/YY. '
+             'Provide 1 date for single day, or 2 dates for range. Defaults to today (incremental).'
+    )
+    parser.add_argument(
+        '--full', 
+        action='store_true', 
+        help='Full sync mode: sync last 30 days and reset cache'
+    )
+    parser.add_argument(
+        '--clear-cache', 
+        action='store_true', 
+        help='Clear sync cache and exit'
+    )
     
     # Parse arguments
     args = parser.parse_args()
     
-    if not args.command:
+    # Validate command
+    if args.command and args.command != 'sync':
+        print(f"❌ Unknown command: {args.command}")
+        print("Available command: sync")
         parser.print_help()
-        return
+        sys.exit(1)
     
-    # Handle plants subcommands
-    if args.command == 'plants':
-        if not hasattr(args, 'plants_command') or not args.plants_command:
-            plants.print_help()
-            return
-    
-    # Handle metrics subcommands
-    if args.command == 'metrics':
-        if not hasattr(args, 'metrics_command') or not args.metrics_command:
-            metrics.print_help()
-            return
-    
-    # Execute command
-    args.func(args)
+    # Execute sync command
+    cmd_sync(args)
 
 if __name__ == '__main__':
     main()
