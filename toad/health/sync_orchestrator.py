@@ -10,9 +10,11 @@ from typing import List, Dict, Any, Optional
 import logging
 
 from toad.config import Config
+from toad.notion_client import TOADNotionClient
 from toad.health.parsers.health_auto_export_metrics import HealthAutoExportMetricsParser
 from toad.health.parsers.health_auto_export import HealthAutoExportParser
 from toad.health.parsers.gymaholic import GymaholicParser
+from toad.health.notion_sync import HealthNotionSync
 from toad.health.models import DailyActivityMetrics, WorkoutData
 
 logger = logging.getLogger(__name__)
@@ -21,16 +23,25 @@ logger = logging.getLogger(__name__)
 class HealthSyncOrchestrator:
     """Orchestrates health data sync operations."""
 
-    def __init__(self, dry_run: bool = False):
+    def __init__(self, dry_run: bool = False, notion_client: Optional[TOADNotionClient] = None):
         """Initialize the health sync orchestrator.
 
         Args:
             dry_run: If True, only simulate sync without updating Notion
+            notion_client: Optional TOADNotionClient instance (creates one if not provided)
         """
         self.dry_run = dry_run
         self.metrics_parser = HealthAutoExportMetricsParser()
         self.workouts_parser = HealthAutoExportParser()
         self.gymaholic_parser = GymaholicParser()
+
+        # Initialize Notion sync (only if not in dry-run mode)
+        if not dry_run:
+            self.notion_client = notion_client or TOADNotionClient()
+            self.notion_sync = HealthNotionSync(self.notion_client)
+        else:
+            self.notion_client = None
+            self.notion_sync = None
 
     def sync_date_range(self, start_date: date, end_date: date) -> Dict[str, Any]:
         """Sync health data for a date range.
@@ -140,8 +151,16 @@ class HealthSyncOrchestrator:
         if self.dry_run:
             self._log_metrics_dry_run(metrics)
         else:
-            # TODO: Implement Notion update
-            logger.warning(f"  → Notion update not yet implemented for metrics")
+            # Sync to Notion
+            result = self.notion_sync.update_habit_tracker_metrics(metrics)
+            if result["success"]:
+                if result["updated_fields"]:
+                    logger.info(f"  → Updated: {', '.join(result['updated_fields'])}")
+                else:
+                    logger.info(f"  → No changes needed")
+            else:
+                logger.error(f"  → Sync failed: {result.get('error', 'Unknown error')}")
+                raise Exception(f"Failed to sync metrics: {result.get('error')}")
 
         return metrics
 

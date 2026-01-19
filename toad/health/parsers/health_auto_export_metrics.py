@@ -158,7 +158,8 @@ class HealthAutoExportMetricsParser:
 
         if metric_values["body_fat_percentage"]:
             avg_bf = sum(metric_values["body_fat_percentage"]) / len(metric_values["body_fat_percentage"])
-            aggregated["body_fat"] = round(avg_bf, 1)
+            # Convert percentage to decimal (18.9% → 0.189) for Notion percentage field
+            aggregated["body_fat"] = round(avg_bf / 100, 4)
 
         return aggregated
 

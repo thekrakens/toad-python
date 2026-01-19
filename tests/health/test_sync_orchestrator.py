@@ -25,15 +25,24 @@ class TestHealthSyncOrchestrator:
         assert orchestrator.metrics_parser is not None
         assert orchestrator.workouts_parser is not None
         assert orchestrator.gymaholic_parser is not None
+        assert orchestrator.notion_client is None
+        assert orchestrator.notion_sync is None
 
-    def test_init_normal_mode(self):
+    @patch('toad.health.sync_orchestrator.TOADNotionClient')
+    def test_init_normal_mode(self, mock_notion_client_class):
         """Test orchestrator initialization in normal mode."""
+        # Mock the TOADNotionClient constructor
+        mock_client_instance = Mock()
+        mock_notion_client_class.return_value = mock_client_instance
+
         orchestrator = HealthSyncOrchestrator(dry_run=False)
 
         assert orchestrator.dry_run is False
         assert orchestrator.metrics_parser is not None
         assert orchestrator.workouts_parser is not None
         assert orchestrator.gymaholic_parser is not None
+        assert orchestrator.notion_client is not None
+        assert orchestrator.notion_sync is not None
 
     @patch('toad.health.sync_orchestrator.Config')
     def test_sync_date_range_missing_config(self, mock_config):

@@ -27,7 +27,7 @@ class TestHealthAutoExportMetricsParser:
         assert metrics.calories_in == pytest.approx(2100.5, rel=0.01)
         assert metrics.calories_out == pytest.approx(1750.25, rel=0.01)
         assert metrics.weight == pytest.approx(175.5, rel=0.01)
-        assert metrics.body_fat == pytest.approx(15.2, rel=0.01)
+        assert metrics.body_fat == pytest.approx(0.152, rel=0.01)  # 15.2% → 0.152 decimal
         assert metrics.source == "HealthAutoExport"
 
     def test_parse_empty_metrics(self):
@@ -80,9 +80,10 @@ class TestHealthAutoExportMetricsParser:
 
         metrics = parser.parse(fixture_path)
 
-        # Two body fat readings: 15.1, 15.3
-        # Average: (15.1 + 15.3) / 2 = 15.2
-        assert metrics.body_fat == pytest.approx(15.2, rel=0.01)
+        # Two body fat readings: 15.1%, 15.3%
+        # Average: (15.1 + 15.3) / 2 = 15.2%
+        # Converted to decimal: 15.2 / 100 = 0.152
+        assert metrics.body_fat == pytest.approx(0.152, rel=0.01)
 
     def test_sum_calorie_values(self):
         """Test summing calorie values (not averaging)."""
@@ -123,13 +124,14 @@ class TestHealthAutoExportMetricsParser:
         assert metrics.weight == pytest.approx(175.5, rel=0.01)
 
     def test_extract_body_fat_percentage(self):
-        """Test extracting body fat percentage."""
+        """Test extracting body fat percentage and converting to decimal."""
         parser = HealthAutoExportMetricsParser()
         fixture_path = FIXTURES_DIR / "valid_activity_metrics.json"
 
         metrics = parser.parse(fixture_path)
 
-        assert metrics.body_fat == pytest.approx(15.2, rel=0.01)
+        # 15.2% → 0.152 decimal (for Notion percentage field)
+        assert metrics.body_fat == pytest.approx(0.152, rel=0.01)
 
     def test_handle_missing_metrics(self):
         """Test handling when expected metrics are missing."""
@@ -193,18 +195,19 @@ class TestHealthAutoExportMetricsParser:
         assert isinstance(metrics, DailyActivityMetrics)
 
     def test_rounded_values(self):
-        """Test that all values are properly rounded to 1 decimal place."""
+        """Test that all values are properly rounded."""
         parser = HealthAutoExportMetricsParser()
         fixture_path = FIXTURES_DIR / "valid_activity_metrics.json"
 
         metrics = parser.parse(fixture_path)
 
-        # All values should be floats rounded to 1 decimal
+        # Calories and weight rounded to 1 decimal
         if metrics.calories_in:
             assert metrics.calories_in == round(metrics.calories_in, 1)
         if metrics.calories_out:
             assert metrics.calories_out == round(metrics.calories_out, 1)
         if metrics.weight:
             assert metrics.weight == round(metrics.weight, 1)
+        # Body fat rounded to 4 decimals (decimal percentage format)
         if metrics.body_fat:
-            assert metrics.body_fat == round(metrics.body_fat, 1)
+            assert metrics.body_fat == round(metrics.body_fat, 4)
