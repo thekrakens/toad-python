@@ -49,9 +49,9 @@ def run_productivity_sync():
             # Get project root
             project_root = Path(__file__).parent.parent
 
-            # Run sync command
+            # Run productivity sync command
             result = subprocess.run(
-                ["poetry", "run", "toad", "sync"],
+                ["poetry", "run", "toad", "sync", "productivity"],
                 cwd=project_root,
                 capture_output=True,
                 text=True,
