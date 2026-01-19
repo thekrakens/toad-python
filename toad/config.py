@@ -28,7 +28,16 @@ class Config:
     WORKOUT_SYNC_INBOX_PATH: str = os.getenv("WORKOUT_SYNC_INBOX_PATH", "")
     WORKOUT_SYNC_PROCESSED_PATH: str = os.getenv("WORKOUT_SYNC_PROCESSED_PATH", "")
     WORKOUT_SYNC_FAILED_PATH: str = os.getenv("WORKOUT_SYNC_FAILED_PATH", "")
-    
+
+    # HealthAutoExport Paths
+    HEALTH_AUTO_EXPORT_WORKOUTS_PATH: str = os.getenv("HEALTH_AUTO_EXPORT_WORKOUTS_PATH", "")
+    HEALTH_AUTO_EXPORT_ACTIVITY_PATH: str = os.getenv("HEALTH_AUTO_EXPORT_ACTIVITY_PATH", "")
+
+    # Sync Intervals (in minutes)
+    PRODUCTIVITY_SYNC_INTERVAL: int = int(os.getenv("PRODUCTIVITY_SYNC_INTERVAL", "5"))
+    HEALTH_SYNC_INTERVAL: int = int(os.getenv("HEALTH_SYNC_INTERVAL", "30"))
+    HEALTH_STATS_ETL_INTERVAL: int = int(os.getenv("HEALTH_STATS_ETL_INTERVAL", "30"))
+
     # LLM API Keys
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
@@ -69,6 +78,14 @@ class Config:
             cls.WORKOUT_SYNC_INBOX_PATH
             and cls.WORKOUT_SYNC_PROCESSED_PATH
             and cls.WORKOUT_SYNC_FAILED_PATH
+        )
+
+    @classmethod
+    def validate_health_auto_export_paths(cls) -> bool:
+        """Validate that HealthAutoExport paths are configured."""
+        return bool(
+            cls.HEALTH_AUTO_EXPORT_WORKOUTS_PATH
+            and cls.HEALTH_AUTO_EXPORT_ACTIVITY_PATH
         )
 
     @classmethod

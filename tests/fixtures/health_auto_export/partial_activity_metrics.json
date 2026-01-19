@@ -1,0 +1,27 @@
+{
+  "data": {
+    "metrics": [
+      {
+        "name": "weight_body_mass",
+        "units": "lb",
+        "data": [
+          {
+            "date": "2026-01-18 00:00:00 -0800",
+            "qty": 174.8
+          }
+        ]
+      },
+      {
+        "name": "active_energy",
+        "units": "kcal",
+        "data": [
+          {
+            "date": "2026-01-18 00:00:00 -0800",
+            "source": "Dylan's Apple Watch",
+            "qty": 450.0
+          }
+        ]
+      }
+    ]
+  }
+}

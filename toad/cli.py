@@ -12,6 +12,7 @@ from toad.notion_client import TOADNotionClient
 from toad.productivity.task_relations import TaskRelationsManager
 from toad.productivity.data_extractor import TaskDataExtractor, TimeEntryExtractor
 from toad.sync_cache import get_sync_cache
+from toad.health.sync_orchestrator import HealthSyncOrchestrator
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -96,19 +97,105 @@ def parse_date_range(date_args: list) -> list:
     
     raise ValueError("Too many date arguments. Provide either 1 date or 2 dates (start and end)")
 
-def cmd_sync(args):
+def cmd_sync_health(args):
     """
-    Simplified sync command with 3 modes:
-    1. Default (incremental): toad sync
-    2. Date sync: toad sync 10-12-25 or toad sync 10-10-25 10-12-25
-    3. Full sync: toad sync --full
+    Health data sync command.
+    Syncs workouts and activity metrics from HealthAutoExport.
+    """
+    print("🐸 TOAD - Health Data Sync")
+
+    # Determine dry-run mode
+    dry_run = args.dry_run
+    if dry_run:
+        print("🔍 Mode: DRY RUN (no Notion updates)")
+    else:
+        print("💾 Mode: EXECUTE (will update Notion)")
+
+    try:
+        # Determine date range
+        if args.full:
+            # Full sync: last 30 days
+            print("🔄 Full sync: last 30 days")
+            dates = []
+            current_date = date.today()
+            for i in range(30):
+                dates.append(current_date - timedelta(days=i))
+            dates.reverse()
+        elif args.dates:
+            # Date range provided
+            dates = parse_date_range(args.dates)
+            if len(dates) == 1:
+                print(f"📅 Syncing for {dates[0]}")
+            else:
+                print(f"📅 Syncing {dates[0]} to {dates[-1]} ({len(dates)} days)")
+        else:
+            # Default: today only
+            dates = [date.today()]
+            print(f"📅 Syncing for {dates[0]} (today)")
+
+        # Initialize orchestrator
+        orchestrator = HealthSyncOrchestrator(dry_run=dry_run)
+
+        # Sync date range
+        start_date = dates[0]
+        end_date = dates[-1]
+        summary = orchestrator.sync_date_range(start_date, end_date)
+
+        # Display summary
+        print(f"\n🎉 Health sync complete!")
+        print(f"  📊 Activity metrics processed: {summary['metrics_processed']}")
+        print(f"  🏃 HealthAutoExport workouts: {summary['workouts_processed']}")
+        print(f"  💪 Gymaholic workouts: {summary['gymaholic_workouts_processed']}")
+
+        if summary['errors']:
+            print(f"\n⚠️  {len(summary['errors'])} errors encountered:")
+            for error in summary['errors'][:5]:
+                print(f"  • {error}")
+            if len(summary['errors']) > 5:
+                print(f"  ... and {len(summary['errors']) - 5} more")
+
+        if dry_run:
+            print(f"\n🔍 This was a DRY RUN. No data was updated in Notion.")
+
+    except ValueError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Health sync failed: {e}")
+        print(f"❌ Health sync failed: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_sync_productivity(args):
+    """
+    Productivity sync command with 3 modes:
+    1. Default (incremental): today only
+    2. Date sync: specific date or date range
+    3. Full sync: last 30 days
     """
     print("🐸 TOAD - Productivity Data Sync")
+
+    # Determine dry-run mode
+    dry_run = args.dry_run
+    if dry_run:
+        print("🔍 Mode: DRY RUN (no Notion updates)")
+    else:
+        print("💾 Mode: EXECUTE (will update Notion)")
     
     # Initialize components
-    notion_client = TOADNotionClient()
-    sync_cache = get_sync_cache()
-    
+    if not dry_run:
+        notion_client = TOADNotionClient()
+        sync_cache = get_sync_cache()
+    else:
+        notion_client = None
+        sync_cache = None
+        print("⚠️  Dry-run for productivity sync not fully implemented yet")
+        print("    Will still perform read operations but skip Notion updates")
+        # TODO: Implement full dry-run support for productivity
+        return
+
     # Handle --clear-cache flag
     if args.clear_cache:
         print("🗑️  Clearing sync cache...")
@@ -236,24 +323,31 @@ def cmd_sync(args):
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description='🐸 TOAD Productivity Analytics CLI',
+        description='🐸 TOAD Analytics CLI',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Incremental sync (today only, uses cache)
-  toad sync
-  
+  # Sync productivity for today
+  toad sync productivity
+
+  # Sync health for today
+  toad sync health
+
   # Sync specific date
-  toad sync 10-12-25
-  
+  toad sync health 01-17-26
+
   # Sync date range
-  toad sync 10-10-25 10-12-25
-  
-  # Full sync (last 30 days, ignores cache)
-  toad sync --full
-  
-  # Clear cache
-  toad sync --clear-cache
+  toad sync health 01-10-26 01-17-26
+
+  # Dry run (preview without updating Notion)
+  toad sync health 01-17-26 --dry-run
+
+  # Full sync (last 30 days)
+  toad sync productivity --full
+  toad sync health --full
+
+  # Clear cache (productivity only)
+  toad sync productivity --clear-cache
 
 Performance Targets:
   - Incremental sync: 2-5 seconds
@@ -261,43 +355,77 @@ Performance Targets:
   - Full sync: 20-30 seconds
         """
     )
-    
-    # Main sync command (now the only command)
-    parser.add_argument(
-        'command',
-        nargs='?',
-        default='sync',
-        help='Command to run (currently only "sync" is supported)'
+
+    # Subparsers for different modules
+    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+
+    # Sync command
+    sync_parser = subparsers.add_parser('sync', help='Sync data to Notion')
+    module_subparsers = sync_parser.add_subparsers(dest='module', help='Module to sync')
+
+    # Productivity module
+    productivity_parser = module_subparsers.add_parser('productivity', help='Sync productivity data (tasks, time entries)')
+    productivity_parser.add_argument(
+        'dates',
+        nargs='*',
+        help='Date(s) to sync. Formats: YYYY-MM-DD, MM-DD-YY, MM/DD/YY. Defaults to today.'
     )
-    parser.add_argument(
-        'dates', 
-        nargs='*', 
-        help='Date(s) to sync. Formats: YYYY-MM-DD, MM-DD-YY, MM/DD/YY. '
-             'Provide 1 date for single day, or 2 dates for range. Defaults to today (incremental).'
+    productivity_parser.add_argument('--full', action='store_true', help='Full sync: last 30 days')
+    productivity_parser.add_argument('--clear-cache', action='store_true', help='Clear sync cache and exit')
+    productivity_parser.add_argument('--dry-run', action='store_true', help='Preview without updating Notion')
+
+    # Health module
+    health_parser = module_subparsers.add_parser('health', help='Sync health data (workouts, metrics)')
+    health_parser.add_argument(
+        'dates',
+        nargs='*',
+        help='Date(s) to sync. Formats: YYYY-MM-DD, MM-DD-YY, MM/DD/YY. Defaults to today.'
     )
-    parser.add_argument(
-        '--full', 
-        action='store_true', 
-        help='Full sync mode: sync last 30 days and reset cache'
+    health_parser.add_argument('--full', action='store_true', help='Full sync: last 30 days')
+    health_parser.add_argument('--dry-run', action='store_true', help='Preview without updating Notion')
+
+    # All modules (future)
+    all_parser = module_subparsers.add_parser('all', help='Sync all modules')
+    all_parser.add_argument(
+        'dates',
+        nargs='*',
+        help='Date(s) to sync. Defaults to today.'
     )
-    parser.add_argument(
-        '--clear-cache', 
-        action='store_true', 
-        help='Clear sync cache and exit'
-    )
-    
+    all_parser.add_argument('--full', action='store_true', help='Full sync: last 30 days')
+    all_parser.add_argument('--dry-run', action='store_true', help='Preview without updating Notion')
+
     # Parse arguments
     args = parser.parse_args()
-    
+
     # Validate command
-    if args.command and args.command != 'sync':
-        print(f"❌ Unknown command: {args.command}")
-        print("Available command: sync")
+    if not args.command:
         parser.print_help()
         sys.exit(1)
-    
-    # Execute sync command
-    cmd_sync(args)
+
+    if args.command != 'sync':
+        print(f"❌ Unknown command: {args.command}")
+        parser.print_help()
+        sys.exit(1)
+
+    # Validate module
+    if not args.module:
+        sync_parser.print_help()
+        sys.exit(1)
+
+    # Execute appropriate sync command
+    if args.module == 'productivity':
+        cmd_sync_productivity(args)
+    elif args.module == 'health':
+        cmd_sync_health(args)
+    elif args.module == 'all':
+        # TODO: Implement all modules sync
+        print("⚠️  Sync all modules not yet implemented")
+        print("    Use: toad sync productivity or toad sync health")
+        sys.exit(1)
+    else:
+        print(f"❌ Unknown module: {args.module}")
+        sync_parser.print_help()
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

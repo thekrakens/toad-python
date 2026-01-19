@@ -72,3 +72,26 @@ class HealthMetric:
     date: datetime
     tag: str  # lbs, bf, cals_in, cals_out
     value: float
+
+
+@dataclass
+class DailyActivityMetrics:
+    """Represents aggregated daily activity metrics from HealthAutoExport.
+
+    This data is used to update Habit Tracker fields (CaloriesIn, CaloriesOut,
+    Weight, BodyFat) from Apple Health data.
+
+    Attributes:
+        date: Date of the metrics (date only, no time)
+        calories_in: Total dietary energy for the day in kcal (optional)
+        calories_out: Total active energy burned for the day in kcal (optional)
+        weight: Average weight for the day in pounds (optional)
+        body_fat: Average body fat percentage for the day (optional)
+        source: Data source (e.g., "HealthAutoExport")
+    """
+    date: datetime
+    source: str = "HealthAutoExport"
+    calories_in: Optional[float] = None
+    calories_out: Optional[float] = None
+    weight: Optional[float] = None
+    body_fat: Optional[float] = None

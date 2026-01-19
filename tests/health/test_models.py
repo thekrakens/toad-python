@@ -1,12 +1,12 @@
 """Tests for TOAD Health data models.
 
 These tests verify the basic functionality of WorkoutData, ExerciseData,
-and HealthMetric dataclasses.
+HealthMetric, and DailyActivityMetrics dataclasses.
 """
 
 from datetime import datetime
 import pytest
-from toad.health.models import WorkoutData, ExerciseData, HealthMetric
+from toad.health.models import WorkoutData, ExerciseData, HealthMetric, DailyActivityMetrics
 
 
 class TestWorkoutData:
@@ -160,3 +160,83 @@ class TestHealthMetric:
 
         assert metric_int.value == 175.0
         assert metric_float.value == 15.5
+
+
+class TestDailyActivityMetrics:
+    """Tests for DailyActivityMetrics dataclass."""
+
+    def test_daily_activity_metrics_creation(self):
+        """Test creating a basic DailyActivityMetrics instance."""
+        metrics = DailyActivityMetrics(
+            date=datetime(2026, 1, 18),
+            source="HealthAutoExport"
+        )
+
+        assert metrics.date == datetime(2026, 1, 18)
+        assert metrics.source == "HealthAutoExport"
+        assert metrics.calories_in is None
+        assert metrics.calories_out is None
+        assert metrics.weight is None
+        assert metrics.body_fat is None
+
+    def test_daily_activity_metrics_all_fields(self):
+        """Test creating DailyActivityMetrics with all fields populated."""
+        metrics = DailyActivityMetrics(
+            date=datetime(2026, 1, 18),
+            source="HealthAutoExport",
+            calories_in=2200.5,
+            calories_out=2850.0,
+            weight=175.2,
+            body_fat=15.3
+        )
+
+        assert metrics.date == datetime(2026, 1, 18)
+        assert metrics.source == "HealthAutoExport"
+        assert metrics.calories_in == 2200.5
+        assert metrics.calories_out == 2850.0
+        assert metrics.weight == 175.2
+        assert metrics.body_fat == 15.3
+
+    def test_daily_activity_metrics_partial_fields(self):
+        """Test creating DailyActivityMetrics with only some metrics."""
+        # Only weight and body fat
+        metrics1 = DailyActivityMetrics(
+            date=datetime(2026, 1, 18),
+            source="HealthAutoExport",
+            weight=175.0,
+            body_fat=15.5
+        )
+
+        assert metrics1.weight == 175.0
+        assert metrics1.body_fat == 15.5
+        assert metrics1.calories_in is None
+        assert metrics1.calories_out is None
+
+        # Only calories
+        metrics2 = DailyActivityMetrics(
+            date=datetime(2026, 1, 18),
+            source="HealthAutoExport",
+            calories_in=2100.0,
+            calories_out=2700.0
+        )
+
+        assert metrics2.calories_in == 2100.0
+        assert metrics2.calories_out == 2700.0
+        assert metrics2.weight is None
+        assert metrics2.body_fat is None
+
+    def test_daily_activity_metrics_float_precision(self):
+        """Test that DailyActivityMetrics preserves float precision."""
+        metrics = DailyActivityMetrics(
+            date=datetime(2026, 1, 18),
+            source="HealthAutoExport",
+            calories_in=2234.56,
+            calories_out=2789.12,
+            weight=174.85,
+            body_fat=15.234
+        )
+
+        assert metrics.calories_in == pytest.approx(2234.56, rel=0.001)
+        assert metrics.calories_out == pytest.approx(2789.12, rel=0.001)
+        assert metrics.weight == pytest.approx(174.85, rel=0.001)
+        assert metrics.body_fat == pytest.approx(15.234, rel=0.001)
