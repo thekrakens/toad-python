@@ -264,24 +264,30 @@ class TaskRelationsManager:
     def process_daily_task_relations(self, target_date: date) -> Dict[str, Any]:
         """
         Process task relations for a specific date and update the Daily Metrics entry.
-        
+
         Args:
             target_date: Date to process relations for
-            
+
         Returns:
             Dict with results of the operation
         """
         logger.info(f"Processing task relations for {target_date}")
-        
+
         try:
-            # Extract data
-            tasks_df = self.task_extractor.extract_tasks_to_dataframe()
-            time_entries_df = self.time_entry_extractor.extract_time_entries_to_dataframe()
-            
-            logger.info(f"Extracted {len(tasks_df)} tasks and {len(time_entries_df)} time entries")
-            
+            # Build filters for efficient querying
+            task_filter = self._build_date_filter_for_tasks(target_date)
+            time_entry_filter = self._build_date_filter_for_time_entries(target_date)
+
+            logger.info(f"Querying tasks relevant to {target_date} (filtered at Notion API level)")
+
+            # Extract data with filters - only gets relevant tasks!
+            tasks_df = self._extract_filtered_tasks(task_filter)
+            time_entries_df = self._extract_filtered_time_entries(time_entry_filter)
+
+            logger.info(f"Extracted {len(tasks_df)} relevant tasks and {len(time_entries_df)} time entries")
+
             return self._process_relations_with_data(target_date, tasks_df, time_entries_df)
-            
+
         except Exception as e:
             logger.error(f"Error processing task relations: {e}")
             return {
@@ -413,21 +419,35 @@ class TaskRelationsManager:
     
     def _update_relation(self, page_id: str, relation_name: str, task_ids: List[str]) -> Dict[str, Any]:
         """
-        Update a relation property on a page.
-        
+        Update a relation property on a page by ADDING new task IDs to existing relations.
+
+        This ensures that:
+        - Tasks planned across multiple days appear in all relevant Daily Metrics
+        - Tasks with time entries across multiple days keep all "Worked" relations
+
         Args:
             page_id: ID of the page to update
             relation_name: Name of the relation property
-            task_ids: List of task IDs to set as relations
-            
+            task_ids: List of task IDs to ADD to the relation
+
         Returns:
             Dict with success status and details
         """
         try:
-            # Build relation array
-            relation_data = [{"id": task_id} for task_id in task_ids]
-            
-            # Update the page
+            # First, fetch current relations
+            current_page = self.client.client.pages.retrieve(page_id=page_id)
+            current_relations = current_page.get("properties", {}).get(relation_name, {}).get("relation", [])
+
+            # Extract existing task IDs
+            existing_ids = set(rel["id"] for rel in current_relations)
+
+            # Merge with new task IDs (union, no duplicates)
+            all_task_ids = existing_ids.union(set(task_ids))
+
+            # Build merged relation array
+            relation_data = [{"id": task_id} for task_id in all_task_ids]
+
+            # Update the page with merged relations
             self.client.client.pages.update(
                 page_id=page_id,
                 properties={
@@ -436,15 +456,18 @@ class TaskRelationsManager:
                     }
                 }
             )
-            
-            logger.info(f"Updated {relation_name} relation with {len(task_ids)} tasks")
-            
+
+            added_count = len(all_task_ids) - len(existing_ids)
+            logger.info(f"Updated {relation_name}: {len(existing_ids)} existing + {added_count} new = {len(all_task_ids)} total")
+
             return {
                 "success": True,
-                "task_count": len(task_ids),
+                "task_count": len(all_task_ids),
+                "added_count": added_count,
+                "existing_count": len(existing_ids),
                 "relation_name": relation_name
             }
-            
+
         except Exception as e:
             logger.error(f"Error updating {relation_name} relation: {e}")
             return {
@@ -453,27 +476,100 @@ class TaskRelationsManager:
                 "relation_name": relation_name
             }
     
+    def _build_date_filter_for_tasks(self, target_date: date) -> dict:
+        """
+        Build a Notion filter to query only tasks relevant to the target date.
+
+        Fetches tasks where Planned, Done, or Doing date matches target_date.
+        Also includes tasks planned before target_date that aren't done (for "Active").
+
+        Args:
+            target_date: Date to filter for
+
+        Returns:
+            Notion API filter dict
+        """
+        date_str = target_date.strftime('%Y-%m-%d')
+
+        # Query tasks where Planned OR Done OR Doing equals target date
+        # OR tasks planned before today that aren't done
+        return {
+            "or": [
+                {
+                    "property": "Planned",
+                    "date": {"equals": date_str}
+                },
+                {
+                    "property": "Done",
+                    "date": {"equals": date_str}
+                },
+                {
+                    "property": "Doing",
+                    "date": {"equals": date_str}
+                },
+                # Include tasks planned before target date that might still be active
+                {
+                    "and": [
+                        {
+                            "property": "Planned",
+                            "date": {"on_or_before": date_str}
+                        },
+                        {
+                            "property": "Done",
+                            "date": {"is_empty": True}
+                        }
+                    ]
+                }
+            ]
+        }
+
+    def _build_date_filter_for_time_entries(self, target_date: date) -> dict:
+        """
+        Build a Notion filter to query only time entries for the target date.
+
+        Args:
+            target_date: Date to filter for
+
+        Returns:
+            Notion API filter dict
+        """
+        date_str = target_date.strftime('%Y-%m-%d')
+
+        # Query time entries where Start date equals target date
+        return {
+            "property": "Start",
+            "date": {"equals": date_str}
+        }
+
     def get_relation_summary(self, target_date: date) -> Dict[str, Any]:
         """
         Get a summary of task relations for a specific date without updating.
-        
+
         Args:
             target_date: Date to get summary for
-            
+
         Returns:
             Dict with relation counts
         """
         try:
-            # Extract data
-            tasks_df = self.task_extractor.extract_tasks_to_dataframe()
-            time_entries_df = self.time_entry_extractor.extract_time_entries_to_dataframe()
-            
+            # Build filters for efficient querying
+            task_filter = self._build_date_filter_for_tasks(target_date)
+            time_entry_filter = self._build_date_filter_for_time_entries(target_date)
+
+            logger.info(f"Querying tasks relevant to {target_date} (filtered at Notion API level)")
+
+            # Extract data with filters - only gets relevant tasks!
+            tasks_df = self._extract_filtered_tasks(task_filter)
+            time_entries_df = self._extract_filtered_time_entries(time_entry_filter)
+
+            logger.info(f"Extracted {len(tasks_df)} relevant tasks and {len(time_entries_df)} time entries")
+
             # Get task IDs for each relation type
             planned_ids = self._get_planned_tasks(tasks_df, target_date)
             active_ids = self._get_active_tasks(tasks_df, time_entries_df, target_date)
             worked_ids = self._get_worked_tasks(time_entries_df, target_date)
             done_ids = self._get_done_tasks(tasks_df, target_date)
-            
+
             return {
                 "target_date": str(target_date),
                 "planned_count": len(planned_ids),
@@ -485,10 +581,68 @@ class TaskRelationsManager:
                 "worked_ids": worked_ids,
                 "done_ids": done_ids
             }
-            
+
         except Exception as e:
             logger.error(f"Error getting relation summary: {e}")
             return {
                 "error": str(e),
                 "target_date": str(target_date)
             }
+
+    def _extract_filtered_tasks(self, filter_dict: dict) -> pd.DataFrame:
+        """Extract tasks with a Notion API filter."""
+        from toad.config import Config
+
+        database_id = Config.NOTION_DATABASE_ID
+        pages = self.client.get_database_pages(database_id, filter_dict=filter_dict)
+
+        # Reuse the extractor's parsing logic
+        task_records = []
+        for page in pages:
+            task_record = {
+                "page_id": page.get("id"),
+                "created_time": page.get("created_time"),
+                "last_edited_time": page.get("last_edited_time"),
+                "url": page.get("url", "")
+            }
+
+            for prop_name, prop_data in page.get("properties", {}).items():
+                value = self.task_extractor.extract_property_value(prop_data, prop_name)
+                task_record[prop_name] = value
+
+            task_records.append(task_record)
+
+        df = pd.DataFrame(task_records)
+        if not df.empty:
+            df = self.task_extractor._clean_dataframe(df)
+
+        return df
+
+    def _extract_filtered_time_entries(self, filter_dict: dict) -> pd.DataFrame:
+        """Extract time entries with a Notion API filter."""
+        from toad.config import Config
+
+        database_id = Config.NOTION_TIME_ENTRIES_DATABASE_ID
+        pages = self.client.get_database_pages(database_id, filter_dict=filter_dict)
+
+        # Reuse the extractor's parsing logic
+        entry_records = []
+        for page in pages:
+            entry_record = {
+                "entry_id": page.get("id"),
+                "created_time": page.get("created_time"),
+                "last_edited_time": page.get("last_edited_time"),
+                "url": page.get("url", "")
+            }
+
+            for prop_name, prop_data in page.get("properties", {}).items():
+                value = self.time_entry_extractor.extract_property_value(prop_data, prop_name)
+                entry_record[prop_name] = value
+
+            entry_records.append(entry_record)
+
+        df = pd.DataFrame(entry_records)
+        if not df.empty:
+            df = self.time_entry_extractor._clean_dataframe(df)
+
+        return df

@@ -263,28 +263,47 @@ def cmd_sync_productivity(args):
         
         # Process task relations for each date
         relations_manager = TaskRelationsManager(notion_client)
-        
+
         total_relations = 0
         errors = []
-        
-        for target_date in dates:
-            result = relations_manager.process_daily_task_relations_with_data(
-                target_date, tasks_df, time_entries_df
-            )
-            
+
+        # OPTIMIZATION: For single date sync (not today), use filtered query
+        if len(dates) == 1 and args.dates:  # Specific date provided, not today's incremental
+            print(f"🔍 Using optimized filtered query for {dates[0]}...")
+            result = relations_manager.process_daily_task_relations(dates[0])
+
             if "error" in result:
-                error_msg = f"{target_date}: {result['error']}"
+                error_msg = f"{dates[0]}: {result['error']}"
                 print(f"  ❌ {error_msg}")
                 errors.append(error_msg)
             else:
-                # Count total tasks across all relation types
                 task_count = sum(
-                    result[rel_type]['task_count'] 
+                    result[rel_type]['task_count']
                     for rel_type in ['planned', 'active', 'worked', 'done']
                     if result[rel_type]['success']
                 )
                 total_relations += task_count
-                print(f"  ✅ {target_date}: {task_count} task relations updated")
+                print(f"  ✅ {dates[0]}: {task_count} task relations updated")
+        else:
+            # Use pre-loaded data for batch processing or incremental sync
+            for target_date in dates:
+                result = relations_manager.process_daily_task_relations_with_data(
+                    target_date, tasks_df, time_entries_df
+                )
+
+                if "error" in result:
+                    error_msg = f"{target_date}: {result['error']}"
+                    print(f"  ❌ {error_msg}")
+                    errors.append(error_msg)
+                else:
+                    # Count total tasks across all relation types
+                    task_count = sum(
+                        result[rel_type]['task_count']
+                        for rel_type in ['planned', 'active', 'worked', 'done']
+                        if result[rel_type]['success']
+                    )
+                    total_relations += task_count
+                    print(f"  ✅ {target_date}: {task_count} task relations updated")
         
         # Update cache timestamps
         if not args.full and errors == []:

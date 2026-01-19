@@ -5,6 +5,7 @@ Handles extraction of task data from Notion and conversion to pandas DataFrames.
 
 import logging
 import pandas as pd
+import pytz
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime, timezone
 import numpy as np
@@ -301,22 +302,87 @@ class TaskDataExtractor:
             return series
     
     def _extract_date_start(self, date_value: Any) -> Optional[datetime]:
-        """Extract start date from a date range or single date."""
+        """
+        Extract start date from a date range or single date.
+
+        Dates without times (e.g., '2026-01-16') are interpreted as midnight PST,
+        not midnight UTC, to match user's timezone expectations.
+        """
         if isinstance(date_value, dict):
             start_date = date_value.get("start")
-            return pd.to_datetime(start_date, errors='coerce', utc=True) if start_date else None
+            if start_date:
+                return self._parse_notion_date_string(start_date)
         elif isinstance(date_value, str):
-            return pd.to_datetime(date_value, errors='coerce', utc=True)
+            return self._parse_notion_date_string(date_value)
         return None
-    
+
     def _extract_date_end(self, date_value: Any) -> Optional[datetime]:
-        """Extract end date from a date range or single date."""
+        """
+        Extract end date from a date range or single date.
+
+        Dates without times (e.g., '2026-01-16') are interpreted as midnight PST,
+        not midnight UTC, to match user's timezone expectations.
+        """
         if isinstance(date_value, dict):
             end_date = date_value.get("end")
-            return pd.to_datetime(end_date, errors='coerce', utc=True) if end_date else None
+            if end_date:
+                return self._parse_notion_date_string(end_date)
         elif isinstance(date_value, str):
-            return pd.to_datetime(date_value, errors='coerce', utc=True)
+            return self._parse_notion_date_string(date_value)
         return None
+
+    def _parse_notion_date_string(self, date_str: str) -> Optional[datetime]:
+        """
+        Parse a Notion date string, handling timezone correctly.
+
+        Notion returns dates in formats like:
+        - '2026-01-16' (date only - should be interpreted as PST)
+        - '2026-01-16T14:30:00.000Z' (with time - already in UTC)
+        - '2026-01-16T14:30:00.000-08:00' (with timezone)
+
+        Args:
+            date_str: Date string from Notion API
+
+        Returns:
+            UTC datetime object
+        """
+        import pytz
+
+        if not date_str:
+            return None
+
+        try:
+            # Try parsing the date
+            dt = pd.to_datetime(date_str, errors='coerce')
+
+            if pd.isna(dt):
+                return None
+
+            # Check if the date string has a time component
+            has_time = 'T' in date_str or ':' in date_str
+
+            if not has_time:
+                # Date only (e.g., '2026-01-16')
+                # Interpret as midnight PST, then convert to UTC
+                pst = pytz.timezone('America/Los_Angeles')
+                # Create naive datetime at midnight
+                naive_dt = dt.replace(tzinfo=None)
+                # Localize to PST
+                pst_dt = pst.localize(naive_dt)
+                # Convert to UTC
+                return pst_dt.astimezone(pytz.UTC)
+            else:
+                # Has time component - convert to UTC if not already
+                if dt.tzinfo is None:
+                    # If naive and has time, assume UTC (Notion default)
+                    return dt.replace(tzinfo=pytz.UTC)
+                else:
+                    # Already has timezone, convert to UTC
+                    return dt.astimezone(pytz.UTC)
+
+        except Exception as e:
+            logger.warning(f"Error parsing date string '{date_str}': {e}")
+            return None
     
     def _calculate_derived_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate additional derived metrics for analysis."""
@@ -663,22 +729,87 @@ class TimeBlockExtractor:
             return series
     
     def _extract_date_start(self, date_value: Any) -> Optional[datetime]:
-        """Extract start date from a date range or single date."""
+        """
+        Extract start date from a date range or single date.
+
+        Dates without times (e.g., '2026-01-16') are interpreted as midnight PST,
+        not midnight UTC, to match user's timezone expectations.
+        """
         if isinstance(date_value, dict):
             start_date = date_value.get("start")
-            return pd.to_datetime(start_date, errors='coerce', utc=True) if start_date else None
+            if start_date:
+                return self._parse_notion_date_string(start_date)
         elif isinstance(date_value, str):
-            return pd.to_datetime(date_value, errors='coerce', utc=True)
+            return self._parse_notion_date_string(date_value)
         return None
-    
+
     def _extract_date_end(self, date_value: Any) -> Optional[datetime]:
-        """Extract end date from a date range or single date."""
+        """
+        Extract end date from a date range or single date.
+
+        Dates without times (e.g., '2026-01-16') are interpreted as midnight PST,
+        not midnight UTC, to match user's timezone expectations.
+        """
         if isinstance(date_value, dict):
             end_date = date_value.get("end")
-            return pd.to_datetime(end_date, errors='coerce', utc=True) if end_date else None
+            if end_date:
+                return self._parse_notion_date_string(end_date)
         elif isinstance(date_value, str):
-            return pd.to_datetime(date_value, errors='coerce', utc=True)
+            return self._parse_notion_date_string(date_value)
         return None
+
+    def _parse_notion_date_string(self, date_str: str) -> Optional[datetime]:
+        """
+        Parse a Notion date string, handling timezone correctly.
+
+        Notion returns dates in formats like:
+        - '2026-01-16' (date only - should be interpreted as PST)
+        - '2026-01-16T14:30:00.000Z' (with time - already in UTC)
+        - '2026-01-16T14:30:00.000-08:00' (with timezone)
+
+        Args:
+            date_str: Date string from Notion API
+
+        Returns:
+            UTC datetime object
+        """
+        import pytz
+
+        if not date_str:
+            return None
+
+        try:
+            # Try parsing the date
+            dt = pd.to_datetime(date_str, errors='coerce')
+
+            if pd.isna(dt):
+                return None
+
+            # Check if the date string has a time component
+            has_time = 'T' in date_str or ':' in date_str
+
+            if not has_time:
+                # Date only (e.g., '2026-01-16')
+                # Interpret as midnight PST, then convert to UTC
+                pst = pytz.timezone('America/Los_Angeles')
+                # Create naive datetime at midnight
+                naive_dt = dt.replace(tzinfo=None)
+                # Localize to PST
+                pst_dt = pst.localize(naive_dt)
+                # Convert to UTC
+                return pst_dt.astimezone(pytz.UTC)
+            else:
+                # Has time component - convert to UTC if not already
+                if dt.tzinfo is None:
+                    # If naive and has time, assume UTC (Notion default)
+                    return dt.replace(tzinfo=pytz.UTC)
+                else:
+                    # Already has timezone, convert to UTC
+                    return dt.astimezone(pytz.UTC)
+
+        except Exception as e:
+            logger.warning(f"Error parsing date string '{date_str}': {e}")
+            return None
     
     def _calculate_derived_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate additional derived metrics for time block analysis."""
@@ -1163,22 +1294,87 @@ class TimeEntryExtractor:
             return series
     
     def _extract_date_start(self, date_value: Any) -> Optional[datetime]:
-        """Extract start date from a date range or single date."""
+        """
+        Extract start date from a date range or single date.
+
+        Dates without times (e.g., '2026-01-16') are interpreted as midnight PST,
+        not midnight UTC, to match user's timezone expectations.
+        """
         if isinstance(date_value, dict):
             start_date = date_value.get("start")
-            return pd.to_datetime(start_date, errors='coerce', utc=True) if start_date else None
+            if start_date:
+                return self._parse_notion_date_string(start_date)
         elif isinstance(date_value, str):
-            return pd.to_datetime(date_value, errors='coerce', utc=True)
+            return self._parse_notion_date_string(date_value)
         return None
-    
+
     def _extract_date_end(self, date_value: Any) -> Optional[datetime]:
-        """Extract end date from a date range or single date."""
+        """
+        Extract end date from a date range or single date.
+
+        Dates without times (e.g., '2026-01-16') are interpreted as midnight PST,
+        not midnight UTC, to match user's timezone expectations.
+        """
         if isinstance(date_value, dict):
             end_date = date_value.get("end")
-            return pd.to_datetime(end_date, errors='coerce', utc=True) if end_date else None
+            if end_date:
+                return self._parse_notion_date_string(end_date)
         elif isinstance(date_value, str):
-            return pd.to_datetime(date_value, errors='coerce', utc=True)
+            return self._parse_notion_date_string(date_value)
         return None
+
+    def _parse_notion_date_string(self, date_str: str) -> Optional[datetime]:
+        """
+        Parse a Notion date string, handling timezone correctly.
+
+        Notion returns dates in formats like:
+        - '2026-01-16' (date only - should be interpreted as PST)
+        - '2026-01-16T14:30:00.000Z' (with time - already in UTC)
+        - '2026-01-16T14:30:00.000-08:00' (with timezone)
+
+        Args:
+            date_str: Date string from Notion API
+
+        Returns:
+            UTC datetime object
+        """
+        import pytz
+
+        if not date_str:
+            return None
+
+        try:
+            # Try parsing the date
+            dt = pd.to_datetime(date_str, errors='coerce')
+
+            if pd.isna(dt):
+                return None
+
+            # Check if the date string has a time component
+            has_time = 'T' in date_str or ':' in date_str
+
+            if not has_time:
+                # Date only (e.g., '2026-01-16')
+                # Interpret as midnight PST, then convert to UTC
+                pst = pytz.timezone('America/Los_Angeles')
+                # Create naive datetime at midnight
+                naive_dt = dt.replace(tzinfo=None)
+                # Localize to PST
+                pst_dt = pst.localize(naive_dt)
+                # Convert to UTC
+                return pst_dt.astimezone(pytz.UTC)
+            else:
+                # Has time component - convert to UTC if not already
+                if dt.tzinfo is None:
+                    # If naive and has time, assume UTC (Notion default)
+                    return dt.replace(tzinfo=pytz.UTC)
+                else:
+                    # Already has timezone, convert to UTC
+                    return dt.astimezone(pytz.UTC)
+
+        except Exception as e:
+            logger.warning(f"Error parsing date string '{date_str}': {e}")
+            return None
     
     def _calculate_derived_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate additional derived metrics for time entry analysis."""
