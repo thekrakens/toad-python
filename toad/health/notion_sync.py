@@ -815,3 +815,266 @@ class HealthNotionSync:
             })
 
         return blocks
+
+    def sync_health_stats_for_date_range(self, start_date: date, end_date: date) -> Dict[str, Any]:
+        """Sync Health Stats for a date range (ETL process).
+
+        Extracts metrics from Habit Tracker, transforms to time-series format,
+        and loads to Health Stats table for charting.
+
+        Args:
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+
+        Returns:
+            Dict with sync summary:
+                - success: bool
+                - entries_created: int
+                - entries_updated: int
+                - errors: List[str]
+        """
+        logger.info(f"Running Health Stats ETL for {start_date} to {end_date}")
+
+        summary = {
+            "success": True,
+            "entries_created": 0,
+            "entries_updated": 0,
+            "errors": []
+        }
+
+        try:
+            # Step 1: Extract metrics from Habit Tracker
+            habit_entries = self._extract_metrics_from_habit_tracker(start_date, end_date)
+            logger.info(f"Extracted {len(habit_entries)} days of data from Habit Tracker")
+
+            # Step 2: Transform to time-series format
+            time_series_entries = self._transform_to_time_series(habit_entries)
+            logger.info(f"Transformed to {len(time_series_entries)} time-series entries")
+
+            # Step 3: Load to Health Stats table
+            for entry in time_series_entries:
+                result = self._load_health_stat(entry)
+                if result["success"]:
+                    if result.get("created"):
+                        summary["entries_created"] += 1
+                    else:
+                        summary["entries_updated"] += 1
+                else:
+                    error_msg = f"{entry['date']} {entry['tag']}: {result.get('error', 'Unknown error')}"
+                    summary["errors"].append(error_msg)
+                    logger.error(f"Failed to load health stat: {error_msg}")
+
+            logger.info(
+                f"Health Stats ETL complete: "
+                f"{summary['entries_created']} created, "
+                f"{summary['entries_updated']} updated, "
+                f"{len(summary['errors'])} errors"
+            )
+
+        except Exception as e:
+            logger.error(f"Health Stats ETL failed: {e}")
+            summary["success"] = False
+            summary["errors"].append(str(e))
+
+        return summary
+
+    def _extract_metrics_from_habit_tracker(self, start_date: date, end_date: date) -> List[Dict[str, Any]]:
+        """Extract health metrics from Habit Tracker for date range.
+
+        Args:
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+
+        Returns:
+            List of dicts with date and metric values:
+                - date: date
+                - weight: Optional[float]
+                - body_fat: Optional[float]
+                - calories_in: Optional[float]
+                - calories_out: Optional[float]
+        """
+        database_id = Config.NOTION_HABITS_DATABASE_ID
+        if not database_id:
+            raise ValueError("NOTION_HABITS_DATABASE_ID not configured")
+
+        # Query Habit Tracker for date range
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
+
+        try:
+            response = self.client.client.databases.query(
+                database_id=database_id,
+                filter={
+                    "and": [
+                        {"property": "Date", "date": {"on_or_after": start_str}},
+                        {"property": "Date", "date": {"on_or_before": end_str}}
+                    ]
+                },
+                sorts=[{"property": "Date", "direction": "ascending"}]
+            )
+
+            entries = []
+            for page in response["results"]:
+                props = page["properties"]
+
+                # Extract date
+                date_prop = props.get("Date", {}).get("date", {})
+                if not date_prop:
+                    continue
+                entry_date = datetime.strptime(date_prop["start"], "%Y-%m-%d").date()
+
+                # Extract metrics
+                weight = props.get("Weight", {}).get("number")
+                body_fat = props.get("BodyFat", {}).get("number")
+                calories_in = props.get("CaloriesIn", {}).get("number")
+                calories_out = props.get("CaloriesOut", {}).get("number")
+
+                # Only include if at least one metric has a value
+                if any([weight, body_fat, calories_in, calories_out]):
+                    entries.append({
+                        "date": entry_date,
+                        "weight": weight,
+                        "body_fat": body_fat,
+                        "calories_in": calories_in,
+                        "calories_out": calories_out
+                    })
+
+            return entries
+
+        except Exception as e:
+            logger.error(f"Failed to extract from Habit Tracker: {e}")
+            raise
+
+    def _transform_to_time_series(self, habit_entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Transform wide format (1 row = 1 day) to long format (1 row = 1 metric).
+
+        Args:
+            habit_entries: List of habit tracker entries with multiple metrics
+
+        Returns:
+            List of time-series entries:
+                - date: date
+                - tag: str (lbs, bf, cals_in, cals_out)
+                - value: float
+                - title: str (auto-generated)
+        """
+        time_series = []
+
+        for entry in habit_entries:
+            entry_date = entry["date"]
+            date_str = entry_date.strftime("%Y-%m-%d")
+
+            # Weight
+            if entry["weight"] is not None:
+                time_series.append({
+                    "date": entry_date,
+                    "tag": "lbs",
+                    "value": entry["weight"],
+                    "title": f"lbs - {date_str}"
+                })
+
+            # Body fat
+            if entry["body_fat"] is not None:
+                time_series.append({
+                    "date": entry_date,
+                    "tag": "bf",
+                    "value": entry["body_fat"],
+                    "title": f"bf - {date_str}"
+                })
+
+            # Calories in
+            if entry["calories_in"] is not None:
+                time_series.append({
+                    "date": entry_date,
+                    "tag": "cals_in",
+                    "value": entry["calories_in"],
+                    "title": f"cals_in - {date_str}"
+                })
+
+            # Calories out
+            if entry["calories_out"] is not None:
+                time_series.append({
+                    "date": entry_date,
+                    "tag": "cals_out",
+                    "value": entry["calories_out"],
+                    "title": f"cals_out - {date_str}"
+                })
+
+        return time_series
+
+    def _load_health_stat(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Load a single health stat entry (upsert - create or update).
+
+        Args:
+            entry: Time-series entry with date, tag, value, title
+
+        Returns:
+            Dict with result:
+                - success: bool
+                - created: bool (true if created, false if updated)
+                - page_id: str
+        """
+        database_id = Config.NOTION_HEALTH_STATS_DATABASE_ID
+        if not database_id:
+            return {
+                "success": False,
+                "error": "NOTION_HEALTH_STATS_DATABASE_ID not configured"
+            }
+
+        date_str = entry["date"].strftime("%Y-%m-%d")
+
+        # Check if entry already exists (by date + tag)
+        try:
+            response = self.client.client.databases.query(
+                database_id=database_id,
+                filter={
+                    "and": [
+                        {"property": "date", "date": {"equals": date_str}},
+                        {"property": "tags", "select": {"equals": entry["tag"]}}
+                    ]
+                }
+            )
+
+            existing_page_id = None
+            if response["results"]:
+                existing_page_id = response["results"][0]["id"]
+
+        except Exception as e:
+            logger.error(f"Failed to query Health Stats: {e}")
+            return {"success": False, "error": str(e)}
+
+        # Build properties
+        properties = {
+            "title": {"title": [{"text": {"content": entry["title"]}}]},
+            "date": {"date": {"start": date_str}},
+            "tags": {"select": {"name": entry["tag"]}},
+            "value": {"number": entry["value"]}
+        }
+
+        try:
+            if existing_page_id:
+                # Update existing entry
+                self.client.client.pages.update(
+                    page_id=existing_page_id,
+                    properties=properties
+                )
+                return {
+                    "success": True,
+                    "created": False,
+                    "page_id": existing_page_id
+                }
+            else:
+                # Create new entry
+                response = self.client.client.pages.create(
+                    parent={"database_id": database_id},
+                    properties=properties
+                )
+                return {
+                    "success": True,
+                    "created": True,
+                    "page_id": response["id"]
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to load health stat: {e}")
+            return {"success": False, "error": str(e)}

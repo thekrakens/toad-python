@@ -36,7 +36,6 @@ class Config:
     # Sync Intervals (in minutes)
     PRODUCTIVITY_SYNC_INTERVAL: int = int(os.getenv("PRODUCTIVITY_SYNC_INTERVAL", "5"))
     HEALTH_SYNC_INTERVAL: int = int(os.getenv("HEALTH_SYNC_INTERVAL", "30"))
-    HEALTH_STATS_ETL_INTERVAL: int = int(os.getenv("HEALTH_STATS_ETL_INTERVAL", "30"))
 
     # LLM API Keys
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")

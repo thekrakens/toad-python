@@ -175,6 +175,28 @@ class HealthSyncOrchestrator:
             from datetime import timedelta
             current_date += timedelta(days=1)
 
+        # Run Health Stats ETL for the entire date range (after all metrics/workouts synced)
+        if not self.dry_run:
+            try:
+                logger.info("Running Health Stats ETL...")
+                etl_result = self.notion_sync.sync_health_stats_for_date_range(start_date, end_date)
+                if etl_result["success"]:
+                    logger.info(
+                        f"✅ Health Stats ETL complete: "
+                        f"{etl_result['entries_created']} created, "
+                        f"{etl_result['entries_updated']} updated"
+                    )
+                    summary['health_stats_created'] = etl_result['entries_created']
+                    summary['health_stats_updated'] = etl_result['entries_updated']
+                else:
+                    error = f"Health Stats ETL failed: {etl_result.get('errors', [])}"
+                    logger.error(f"❌ {error}")
+                    summary['errors'].append(error)
+            except Exception as e:
+                error = f"Health Stats ETL: {str(e)}"
+                logger.error(f"❌ {error}")
+                summary['errors'].append(error)
+
         return summary
 
     def _sync_activity_metrics(self, file_path: Path) -> Optional[DailyActivityMetrics]:
