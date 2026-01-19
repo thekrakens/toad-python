@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import date, datetime
 from typing import List, Dict, Any, Optional
 import logging
+import shutil
 
 from toad.config import Config
 from toad.notion_client import TOADNotionClient
@@ -15,6 +16,7 @@ from toad.health.parsers.health_auto_export_metrics import HealthAutoExportMetri
 from toad.health.parsers.health_auto_export import HealthAutoExportParser
 from toad.health.parsers.gymaholic import GymaholicParser
 from toad.health.notion_sync import HealthNotionSync
+from toad.health.workout_merger import WorkoutMerger
 from toad.health.models import DailyActivityMetrics, WorkoutData
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ class HealthSyncOrchestrator:
         self.metrics_parser = HealthAutoExportMetricsParser()
         self.workouts_parser = HealthAutoExportParser()
         self.gymaholic_parser = GymaholicParser()
+        self.workout_merger = WorkoutMerger()
 
         # Initialize Notion sync (only if not in dry-run mode)
         if not dry_run:
@@ -82,19 +85,18 @@ class HealthSyncOrchestrator:
                 logger.warning(f"Gymaholic inbox not found: {gymaholic_inbox}")
                 gymaholic_inbox = None
 
-        # Process Gymaholic CSVs from inbox (scan once, filter by date range)
+        # Parse all Gymaholic CSVs from inbox (collect, don't sync yet)
+        all_gymaholic_workouts = []
         if gymaholic_inbox:
             try:
-                gymaholic_workouts = self._sync_gymaholic_inbox(gymaholic_inbox, start_date, end_date)
-                summary['gymaholic_workouts_processed'] = len(gymaholic_workouts)
-                if gymaholic_workouts:
-                    logger.info(f"✅ Synced {len(gymaholic_workouts)} Gymaholic workout(s)")
+                all_gymaholic_workouts = self._parse_gymaholic_inbox(gymaholic_inbox, start_date, end_date)
+                logger.info(f"Found {len(all_gymaholic_workouts)} Gymaholic workout(s) in date range")
             except Exception as e:
                 error = f"Gymaholic inbox: {str(e)}"
                 logger.error(f"❌ {error}")
                 summary['errors'].append(error)
 
-        # Process each date in range for HealthAutoExport data
+        # Process each date in range
         current_date = start_date
         while current_date <= end_date:
             date_str = current_date.strftime("%Y-%m-%d")
@@ -115,21 +117,59 @@ class HealthSyncOrchestrator:
                 else:
                     logger.debug(f"No activity metrics file for {date_str}")
 
-            # Sync workouts for this date
+            # Parse HealthAutoExport workouts for this date (don't sync yet)
+            healthautoexport_workouts = []
             if workouts_path:
                 workouts_file = workouts_path / f"HealthAutoExport-{date_str}.json"
                 if workouts_file.exists():
                     try:
-                        workouts = self._sync_workouts(workouts_file)
-                        if workouts:
-                            summary['workouts_processed'] += len(workouts)
-                            logger.info(f"✅ Synced {len(workouts)} HealthAutoExport workout(s) for {date_str}")
+                        healthautoexport_workouts = self.workouts_parser.parse(workouts_file)
+                        logger.debug(f"Parsed {len(healthautoexport_workouts)} HealthAutoExport workout(s) for {date_str}")
                     except Exception as e:
-                        error = f"{date_str} workouts: {str(e)}"
+                        error = f"{date_str} HealthAutoExport workouts: {str(e)}"
                         logger.error(f"❌ {error}")
                         summary['errors'].append(error)
-                else:
-                    logger.debug(f"No workouts file for {date_str}")
+
+            # Get Gymaholic workouts for this date
+            gymaholic_workouts = [w for w in all_gymaholic_workouts if w.date.date() == current_date]
+
+            # Merge workouts from both sources
+            merged_workouts = self.workout_merger.merge_workouts_for_day(
+                gymaholic_workouts,
+                healthautoexport_workouts
+            )
+
+            # Sync merged workouts
+            if merged_workouts:
+                try:
+                    synced_workouts = self._sync_merged_workouts(merged_workouts)
+
+                    # Count by source for summary
+                    gymaholic_count = sum(1 for w in synced_workouts if w.source == "Gymaholic")
+                    healthautoexport_count = len(synced_workouts) - gymaholic_count
+
+                    summary['gymaholic_workouts_processed'] += gymaholic_count
+                    summary['workouts_processed'] += healthautoexport_count
+
+                    logger.info(f"✅ Synced {len(synced_workouts)} workout(s) for {date_str} ({gymaholic_count} Gymaholic, {healthautoexport_count} HealthAutoExport)")
+
+                    # Move processed Gymaholic CSVs
+                    if not self.dry_run:
+                        self._move_processed_gymaholic_csvs(synced_workouts)
+
+                    # Update Habit Tracker page content
+                    if not self.dry_run:
+                        try:
+                            result = self.notion_sync.update_habit_tracker_workout_summary(current_date, synced_workouts)
+                            if result["success"]:
+                                logger.info(f"  → Updated Habit Tracker page content")
+                        except Exception as e:
+                            logger.error(f"  → Failed to update Habit Tracker page content: {e}")
+
+                except Exception as e:
+                    error = f"{date_str} workout sync: {str(e)}"
+                    logger.error(f"❌ {error}")
+                    summary['errors'].append(error)
 
             # Move to next date
             from datetime import timedelta
@@ -164,25 +204,43 @@ class HealthSyncOrchestrator:
 
         return metrics
 
-    def _sync_workouts(self, file_path: Path) -> List[WorkoutData]:
-        """Sync workouts from a file.
+    def _sync_merged_workouts(self, workouts: List[WorkoutData]) -> List[WorkoutData]:
+        """Sync merged workouts to Notion.
 
         Args:
-            file_path: Path to HealthAutoExport workouts JSON
+            workouts: List of merged WorkoutData objects to sync
 
         Returns:
-            List of parsed WorkoutData objects
+            List of successfully synced workouts
         """
-        workouts = self.workouts_parser.parse(file_path)
+        synced = []
 
-        if self.dry_run:
-            for workout in workouts:
-                self._log_workout_dry_run(workout)
-        else:
-            # TODO: Implement Notion update
-            logger.warning(f"  → Notion update not yet implemented for workouts")
+        for workout in workouts:
+            if self.dry_run:
+                # Log based on source
+                if workout.source == "Gymaholic":
+                    self._log_gymaholic_workout_dry_run(workout)
+                else:
+                    self._log_workout_dry_run(workout)
+                synced.append(workout)
+            else:
+                # Sync to Notion
+                try:
+                    result = self.notion_sync.sync_workout(workout)
+                    if result["success"]:
+                        if result.get("is_duplicate"):
+                            logger.info(f"  → Updated existing workout: {workout.workout_type}")
+                        else:
+                            logger.info(f"  → Created new workout: {workout.workout_type}")
+                        if result.get("habit_tracker_updated"):
+                            logger.info(f"  → Updated Habit Tracker checkboxes")
+                        synced.append(workout)
+                    else:
+                        logger.error(f"  → Failed to sync workout: {result.get('error')}")
+                except Exception as e:
+                    logger.error(f"  → Error syncing workout: {e}")
 
-        return workouts
+        return synced
 
     def _log_metrics_dry_run(self, metrics: DailyActivityMetrics):
         """Log activity metrics in dry-run mode.
@@ -200,8 +258,48 @@ class HealthSyncOrchestrator:
         if metrics.body_fat is not None:
             logger.info(f"    BodyFat: {metrics.body_fat}%")
 
-    def _sync_gymaholic_inbox(self, inbox_path: Path, start_date: date, end_date: date) -> List[WorkoutData]:
-        """Sync Gymaholic CSVs from inbox directory.
+    def _move_processed_gymaholic_csvs(self, synced_workouts: List[WorkoutData]) -> None:
+        """Move successfully synced Gymaholic CSVs to processed folder.
+
+        Args:
+            synced_workouts: List of successfully synced workouts
+        """
+        if not Config.WORKOUT_SYNC_INBOX_PATH:
+            return
+
+        # Get processed folder path
+        processed_folder = Path(Config.WORKOUT_SYNC_INBOX_PATH) / "processed" / "gymaholic"
+
+        # Create processed folder if it doesn't exist
+        processed_folder.mkdir(parents=True, exist_ok=True)
+
+        # Move Gymaholic CSV files
+        for workout in synced_workouts:
+            if workout.source == "Gymaholic" and workout.raw_file_path:
+                csv_path = Path(workout.raw_file_path)
+
+                # Only move if file still exists in inbox
+                if csv_path.exists() and "inbox" in str(csv_path):
+                    try:
+                        # Destination path
+                        dest_path = processed_folder / csv_path.name
+
+                        # If destination already exists, add timestamp
+                        if dest_path.exists():
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            stem = dest_path.stem
+                            suffix = dest_path.suffix
+                            dest_path = processed_folder / f"{stem}_{timestamp}{suffix}"
+
+                        # Move file
+                        shutil.move(str(csv_path), str(dest_path))
+                        logger.info(f"  → Moved CSV to processed: {csv_path.name}")
+
+                    except Exception as e:
+                        logger.warning(f"  → Failed to move CSV {csv_path.name}: {e}")
+
+    def _parse_gymaholic_inbox(self, inbox_path: Path, start_date: date, end_date: date) -> List[WorkoutData]:
+        """Parse Gymaholic CSVs from inbox directory.
 
         Args:
             inbox_path: Path to Gymaholic inbox directory
@@ -226,12 +324,6 @@ class HealthSyncOrchestrator:
                 workout_date = workout.date.date()  # Convert datetime to date
                 if start_date <= workout_date <= end_date:
                     workouts.append(workout)
-
-                    if self.dry_run:
-                        self._log_gymaholic_workout_dry_run(workout)
-                    else:
-                        # TODO: Implement Notion update
-                        logger.warning(f"  → Notion update not yet implemented for Gymaholic")
 
             except Exception as e:
                 logger.error(f"❌ Failed to parse {csv_file.name}: {e}")
