@@ -8,6 +8,7 @@ import sys
 import signal
 import time
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -51,78 +52,50 @@ class DaemonManager:
             }
 
         try:
-            # Fork process to run in background
-            pid = os.fork()
+            # Spawn daemon as a clean subprocess (avoids macOS fork issues)
+            # Run: python -m toad.daemon.daemon
+            python_exe = sys.executable
 
-            if pid > 0:
-                # Parent process
-                # Wait briefly to ensure child started
-                time.sleep(0.5)
+            # Redirect stdout/stderr to log file
+            log_file_handle = open(self.log_file, 'a')
 
-                # Verify child is still running
-                if self.is_running():
-                    child_pid = self._read_pid()
-                    return {
-                        "success": True,
-                        "message": f"Daemon started successfully (PID: {child_pid})",
-                        "pid": child_pid
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "message": "Daemon failed to start (check logs)",
-                        "pid": None
-                    }
+            # Start daemon process in background
+            process = subprocess.Popen(
+                [python_exe, "-m", "toad.daemon.daemon"],
+                stdout=log_file_handle,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,  # Detach from parent session
+                cwd=os.path.expanduser("~"),
+                env=os.environ.copy()
+            )
 
-        except OSError as e:
+            # Write PID file
+            self._write_pid(process.pid)
+
+            # Wait briefly to ensure daemon started
+            time.sleep(1)
+
+            # Verify daemon is still running
+            if self.is_running():
+                return {
+                    "success": True,
+                    "message": f"Daemon started successfully (PID: {process.pid})",
+                    "pid": process.pid
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Daemon failed to start (check logs)",
+                    "pid": None
+                }
+
+        except Exception as e:
             return {
                 "success": False,
-                "message": f"Fork failed: {e}",
+                "message": f"Failed to start daemon: {e}",
                 "pid": None
             }
-
-        # Child process continues here
-        self._daemonize()
-        return {"success": True, "message": "Daemon started", "pid": os.getpid()}
-
-    def _daemonize(self):
-        """
-        Daemonize the current process.
-
-        This runs in the child process after fork.
-        """
-        # Write PID file
-        self._write_pid(os.getpid())
-
-        # Detach from terminal
-        os.setsid()
-
-        # Redirect standard file descriptors
-        sys.stdout.flush()
-        sys.stderr.flush()
-
-        # Redirect stdin/stdout/stderr to log file
-        with open(self.log_file, 'a+') as log_f:
-            os.dup2(log_f.fileno(), sys.stdout.fileno())
-            os.dup2(log_f.fileno(), sys.stderr.fileno())
-
-        with open(os.devnull, 'r') as devnull:
-            os.dup2(devnull.fileno(), sys.stdin.fileno())
-
-        # Start the daemon
-        from toad.daemon.daemon import TOADDaemon
-        from toad.logging_config import setup_daemon_logging
-
-        setup_daemon_logging(log_file=self.log_file)
-        daemon = TOADDaemon()
-
-        try:
-            daemon.run()
-        except Exception as e:
-            logger.error(f"Daemon crashed: {e}", exc_info=True)
-        finally:
-            # Clean up PID file on exit
-            self._remove_pid()
 
     def stop(self, timeout: int = 10) -> Dict[str, Any]:
         """
