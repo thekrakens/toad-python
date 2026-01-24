@@ -4,6 +4,8 @@ TOAD (Task-Oriented Analytics Dashboard) - A productivity analytics system that 
 
 ## Features
 
+- **Real-time Health Data Sync**: Event-driven daemon watches iCloud directories for new workout/activity files and syncs immediately
+- **Daemon Process Management**: Start/stop/status/restart daemon via CLI or install as macOS system service
 - **Simplified Sync CLI**: Three sync modes (incremental, date-specific, full) with intelligent caching
 - **Task Relations Management**: Automatically link tasks to daily metrics based on planning, activity, work, and completion
 - **Incremental Sync**: Only fetch and process changed data for fast 2-5 second syncs
@@ -91,9 +93,64 @@ Required environment variables:
 - `NOTION_DAILY_METRICS_DATABASE_ID` - Daily metrics database ID
 - `NOTION_TIME_BLOCKS_DATABASE_ID` - Time blocks database ID
 
-## Auto-Sync (Run every 5 minutes)
+## TOAD Daemon (Recommended)
 
-Set up TOAD to automatically sync every 5 minutes:
+The TOAD daemon provides real-time sync by watching iCloud directories for new health data files. When a new workout or activity file is detected, it's automatically processed and synced to Notion.
+
+### Quick Start
+
+```bash
+# Start the daemon manually
+poetry run toad daemon start
+
+# Check daemon status
+poetry run toad daemon status
+
+# View daemon logs
+tail -f ~/.toad/daemon.log
+
+# Stop the daemon
+poetry run toad daemon stop
+```
+
+### Install as System Service (macOS)
+
+For automatic startup on boot and crash recovery:
+
+```bash
+# Install daemon as launchd service
+bash scripts/install_daemon.sh
+
+# Uninstall daemon service
+bash scripts/uninstall_daemon.sh
+```
+
+The daemon will:
+- Start automatically on system boot
+- Restart automatically if it crashes
+- Watch for new files in configured iCloud directories
+- Process and sync data immediately when files are detected
+- Log all activity to `~/.toad/daemon.log`
+
+### Daemon Commands
+
+```bash
+poetry run toad daemon start     # Start the daemon in background
+poetry run toad daemon stop      # Stop the daemon gracefully
+poetry run toad daemon restart   # Restart the daemon
+poetry run toad daemon status    # Show daemon status (PID, uptime, etc.)
+```
+
+### Monitored Directories
+
+The daemon watches these iCloud directories:
+- `~/Library/Mobile Documents/iCloud~com~ifunography~HealthExport/Documents/TOAD_workouts/`
+- `~/Library/Mobile Documents/iCloud~com~ifunography~HealthExport/Documents/TOAD_Activity/`
+- `~/Library/Mobile Documents/com~apple~CloudDocs/TOAD/workout_sync/inbox/gymaholic/`
+
+## Auto-Sync (Legacy - 5 Minute Scheduler)
+
+Alternative to the daemon for periodic syncing:
 
 ### macOS Quick Setup
 

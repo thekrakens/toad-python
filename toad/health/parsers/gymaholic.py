@@ -11,7 +11,7 @@ CSV Format:
 
 from pathlib import Path
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 
 from toad.health.models import WorkoutData, ExerciseData
@@ -123,7 +123,7 @@ class GymaholicParser:
             date_str: Date string from CSV
 
         Returns:
-            datetime object
+            datetime object (timezone-aware, UTC)
         """
         # Format: "Jan 14., 06:04"
         # Remove the period after day
@@ -134,10 +134,12 @@ class GymaholicParser:
         date_str_with_year = f"{date_str} {current_year}"
 
         try:
-            return datetime.strptime(date_str_with_year, "%b %d %H:%M %Y")
+            dt = datetime.strptime(date_str_with_year, "%b %d %H:%M %Y")
+            return dt.replace(tzinfo=timezone.utc)
         except ValueError:
             # Fallback: try without time
-            return datetime.strptime(f"{date_str.split(',')[0]} {current_year}", "%b %d %Y")
+            dt = datetime.strptime(f"{date_str.split(',')[0]} {current_year}", "%b %d %Y")
+            return dt.replace(tzinfo=timezone.utc)
 
     def _parse_duration(self, duration_str: str) -> int:
         """Parse duration from format '1h:28m' to minutes.

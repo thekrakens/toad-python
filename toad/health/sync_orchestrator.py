@@ -93,7 +93,7 @@ class HealthSyncOrchestrator:
                 logger.info(f"Found {len(all_gymaholic_workouts)} Gymaholic workout(s) in date range")
             except Exception as e:
                 error = f"Gymaholic inbox: {str(e)}"
-                logger.error(f"❌ {error}")
+                logger.error(f"[HEALTH_SYNC] {error}")
                 summary['errors'].append(error)
 
         # Process each date in range
@@ -109,10 +109,10 @@ class HealthSyncOrchestrator:
                         metrics = self._sync_activity_metrics(activity_file)
                         if metrics:
                             summary['metrics_processed'] += 1
-                            logger.info(f"✅ Synced activity metrics for {date_str}")
+                            logger.info(f"[HEALTH_SYNC] Synced activity metrics for {date_str}")
                     except Exception as e:
                         error = f"{date_str} activity metrics: {str(e)}"
-                        logger.error(f"❌ {error}")
+                        logger.error(f"[HEALTH_SYNC] {error}")
                         summary['errors'].append(error)
                 else:
                     logger.debug(f"No activity metrics file for {date_str}")
@@ -127,7 +127,7 @@ class HealthSyncOrchestrator:
                         logger.debug(f"Parsed {len(healthautoexport_workouts)} HealthAutoExport workout(s) for {date_str}")
                     except Exception as e:
                         error = f"{date_str} HealthAutoExport workouts: {str(e)}"
-                        logger.error(f"❌ {error}")
+                        logger.error(f"[HEALTH_SYNC] {error}")
                         summary['errors'].append(error)
 
             # Get Gymaholic workouts for this date
@@ -151,7 +151,7 @@ class HealthSyncOrchestrator:
                     summary['gymaholic_workouts_processed'] += gymaholic_count
                     summary['workouts_processed'] += healthautoexport_count
 
-                    logger.info(f"✅ Synced {len(synced_workouts)} workout(s) for {date_str} ({gymaholic_count} Gymaholic, {healthautoexport_count} HealthAutoExport)")
+                    logger.info(f"[HEALTH_SYNC] Synced {len(synced_workouts)} workout(s) for {date_str} ({gymaholic_count} Gymaholic, {healthautoexport_count} HealthAutoExport)")
 
                     # Move processed Gymaholic CSVs
                     if not self.dry_run:
@@ -168,7 +168,7 @@ class HealthSyncOrchestrator:
 
                 except Exception as e:
                     error = f"{date_str} workout sync: {str(e)}"
-                    logger.error(f"❌ {error}")
+                    logger.error(f"[HEALTH_SYNC] {error}")
                     summary['errors'].append(error)
 
             # Move to next date
@@ -182,7 +182,7 @@ class HealthSyncOrchestrator:
                 etl_result = self.notion_sync.sync_health_stats_for_date_range(start_date, end_date)
                 if etl_result["success"]:
                     logger.info(
-                        f"✅ Health Stats ETL complete: "
+                        f"[HEALTH_SYNC] Health Stats ETL complete: "
                         f"{etl_result['entries_created']} created, "
                         f"{etl_result['entries_updated']} updated"
                     )
@@ -190,11 +190,11 @@ class HealthSyncOrchestrator:
                     summary['health_stats_updated'] = etl_result['entries_updated']
                 else:
                     error = f"Health Stats ETL failed: {etl_result.get('errors', [])}"
-                    logger.error(f"❌ {error}")
+                    logger.error(f"[HEALTH_SYNC] {error}")
                     summary['errors'].append(error)
             except Exception as e:
                 error = f"Health Stats ETL: {str(e)}"
-                logger.error(f"❌ {error}")
+                logger.error(f"[HEALTH_SYNC] {error}")
                 summary['errors'].append(error)
 
         return summary
@@ -348,7 +348,7 @@ class HealthSyncOrchestrator:
                     workouts.append(workout)
 
             except Exception as e:
-                logger.error(f"❌ Failed to parse {csv_file.name}: {e}")
+                logger.error(f"[HEALTH_SYNC] Failed to parse {csv_file.name}: {e}")
 
         return workouts
 

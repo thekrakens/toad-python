@@ -24,6 +24,7 @@ TYPE_EQUIVALENTS = {
     "Traditional Strength Training": [
         "Traditional Strength Training",
         "Strength Training",
+        "Strength",
         "Weightlifting"
     ],
     "Yoga": ["Yoga", "Stretching"],

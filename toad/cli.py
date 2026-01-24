@@ -13,6 +13,7 @@ from toad.productivity.task_relations import TaskRelationsManager
 from toad.productivity.data_extractor import TaskDataExtractor, TimeEntryExtractor
 from toad.sync_cache import get_sync_cache
 from toad.health.sync_orchestrator import HealthSyncOrchestrator
+from toad.daemon.manager import DaemonManager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -107,15 +108,15 @@ def cmd_sync_health(args):
     # Determine dry-run mode
     dry_run = args.dry_run
     if dry_run:
-        print("🔍 Mode: DRY RUN (no Notion updates)")
+        print("Mode: DRY RUN (no Notion updates)")
     else:
-        print("💾 Mode: EXECUTE (will update Notion)")
+        print("Mode: EXECUTE (will update Notion)")
 
     try:
         # Determine date range
         if args.full:
             # Full sync: last 30 days
-            print("🔄 Full sync: last 30 days")
+            print("Full sync: last 30 days")
             dates = []
             current_date = date.today()
             for i in range(30):
@@ -125,13 +126,13 @@ def cmd_sync_health(args):
             # Date range provided
             dates = parse_date_range(args.dates)
             if len(dates) == 1:
-                print(f"📅 Syncing for {dates[0]}")
+                print(f"Syncing for {dates[0]}")
             else:
-                print(f"📅 Syncing {dates[0]} to {dates[-1]} ({len(dates)} days)")
+                print(f"Syncing {dates[0]} to {dates[-1]} ({len(dates)} days)")
         else:
             # Default: today only
             dates = [date.today()]
-            print(f"📅 Syncing for {dates[0]} (today)")
+            print(f"Syncing for {dates[0]} (today)")
 
         # Initialize orchestrator
         orchestrator = HealthSyncOrchestrator(dry_run=dry_run)
@@ -142,27 +143,27 @@ def cmd_sync_health(args):
         summary = orchestrator.sync_date_range(start_date, end_date)
 
         # Display summary
-        print(f"\n🎉 Health sync complete!")
-        print(f"  📊 Activity metrics processed: {summary['metrics_processed']}")
-        print(f"  🏃 HealthAutoExport workouts: {summary['workouts_processed']}")
-        print(f"  💪 Gymaholic workouts: {summary['gymaholic_workouts_processed']}")
+        print(f"\nHealth sync complete!")
+        print(f"  Activity metrics processed: {summary['metrics_processed']}")
+        print(f"  HealthAutoExport workouts: {summary['workouts_processed']}")
+        print(f"  Gymaholic workouts: {summary['gymaholic_workouts_processed']}")
 
         if summary['errors']:
-            print(f"\n⚠️  {len(summary['errors'])} errors encountered:")
+            print(f"\nWARNING: {len(summary['errors'])} errors encountered:")
             for error in summary['errors'][:5]:
                 print(f"  • {error}")
             if len(summary['errors']) > 5:
                 print(f"  ... and {len(summary['errors']) - 5} more")
 
         if dry_run:
-            print(f"\n🔍 This was a DRY RUN. No data was updated in Notion.")
+            print(f"\nThis was a DRY RUN. No data was updated in Notion.")
 
     except ValueError as e:
-        print(f"❌ {e}")
+        print(f"ERROR: {e}")
         sys.exit(1)
     except Exception as e:
         logger.error(f"Health sync failed: {e}")
-        print(f"❌ Health sync failed: {e}")
+        print(f"ERROR: Health sync failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -180,9 +181,9 @@ def cmd_sync_productivity(args):
     # Determine dry-run mode
     dry_run = args.dry_run
     if dry_run:
-        print("🔍 Mode: DRY RUN (no Notion updates)")
+        print("Mode: DRY RUN (no Notion updates)")
     else:
-        print("💾 Mode: EXECUTE (will update Notion)")
+        print("Mode: EXECUTE (will update Notion)")
     
     # Initialize components
     if not dry_run:
@@ -191,54 +192,54 @@ def cmd_sync_productivity(args):
     else:
         notion_client = None
         sync_cache = None
-        print("⚠️  Dry-run for productivity sync not fully implemented yet")
+        print("WARNING: Dry-run for productivity sync not fully implemented yet")
         print("    Will still perform read operations but skip Notion updates")
         # TODO: Implement full dry-run support for productivity
         return
 
     # Handle --clear-cache flag
     if args.clear_cache:
-        print("🗑️  Clearing sync cache...")
+        print("Clearing sync cache...")
         sync_cache.clear_all()
-        print("✅ Cache cleared successfully")
+        print("Cache cleared successfully")
         return
     
     try:
         # Determine sync mode
         if args.full:
             # MODE 3: Full Sync
-            print("🔄 Mode: Full Sync (last 30 days)")
+            print("Mode: Full Sync (last 30 days)")
             dates = []
             current_date = date.today()
             for i in range(30):
                 dates.append(current_date - timedelta(days=i))
             dates.reverse()
             use_cache = False
-            print(f"📅 Syncing {len(dates)} days")
+            print(f"Syncing {len(dates)} days")
         elif args.dates:
             # MODE 2: Date Sync
             dates = parse_date_range(args.dates)
             use_cache = True
             if len(dates) == 1:
-                print(f"🔄 Mode: Date Sync")
-                print(f"📅 Syncing for {dates[0]}")
+                print(f"Mode: Date Sync")
+                print(f"Syncing for {dates[0]}")
             else:
-                print(f"🔄 Mode: Date Range Sync")
-                print(f"📅 Syncing {dates[0]} to {dates[-1]} ({len(dates)} days)")
+                print(f"Mode: Date Range Sync")
+                print(f"Syncing {dates[0]} to {dates[-1]} ({len(dates)} days)")
         else:
             # MODE 1: Default Incremental Sync (today only)
             dates = [date.today()]
             use_cache = True
-            print(f"🔄 Mode: Incremental Sync (today only)")
-            print(f"📅 Syncing for {dates[0]}")
+            print(f"Mode: Incremental Sync (today only)")
+            print(f"Syncing for {dates[0]}")
         
         # Check cache for last sync times
         last_task_sync = sync_cache.get_last_sync_time('tasks')
         last_entry_sync = sync_cache.get_last_sync_time('time_entries')
         
         if use_cache and last_task_sync and last_entry_sync:
-            print(f"⏱️  Last sync: tasks={last_task_sync.strftime('%Y-%m-%d %H:%M:%S')}, entries={last_entry_sync.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"📥 Fetching only modified data...")
+            print(f"Last sync: tasks={last_task_sync.strftime('%Y-%m-%d %H:%M:%S')}, entries={last_entry_sync.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Fetching only modified data...")
         else:
             print(f"� Fetching all data (no cache or full sync)...")
         
@@ -259,7 +260,7 @@ def cmd_sync_productivity(args):
             tasks_df = task_extractor.extract_tasks_to_dataframe()
             time_entries_df = time_entry_extractor.extract_time_entries_to_dataframe()
         
-        print(f"✅ Loaded {len(tasks_df)} tasks and {len(time_entries_df)} time entries")
+        print(f"Loaded {len(tasks_df)} tasks and {len(time_entries_df)} time entries")
         
         # Process task relations for each date
         relations_manager = TaskRelationsManager(notion_client)
@@ -269,12 +270,12 @@ def cmd_sync_productivity(args):
 
         # OPTIMIZATION: For single date sync (not today), use filtered query
         if len(dates) == 1 and args.dates:  # Specific date provided, not today's incremental
-            print(f"🔍 Using optimized filtered query for {dates[0]}...")
+            print(f"Using optimized filtered query for {dates[0]}...")
             result = relations_manager.process_daily_task_relations(dates[0])
 
             if "error" in result:
                 error_msg = f"{dates[0]}: {result['error']}"
-                print(f"  ❌ {error_msg}")
+                print(f"  ERROR: {error_msg}")
                 errors.append(error_msg)
             else:
                 task_count = sum(
@@ -283,7 +284,7 @@ def cmd_sync_productivity(args):
                     if result[rel_type]['success']
                 )
                 total_relations += task_count
-                print(f"  ✅ {dates[0]}: {task_count} task relations updated")
+                print(f"  {dates[0]}: {task_count} task relations updated")
         else:
             # Use pre-loaded data for batch processing or incremental sync
             for target_date in dates:
@@ -293,7 +294,7 @@ def cmd_sync_productivity(args):
 
                 if "error" in result:
                     error_msg = f"{target_date}: {result['error']}"
-                    print(f"  ❌ {error_msg}")
+                    print(f"  ERROR: {error_msg}")
                     errors.append(error_msg)
                 else:
                     # Count total tasks across all relation types
@@ -303,41 +304,105 @@ def cmd_sync_productivity(args):
                         if result[rel_type]['success']
                     )
                     total_relations += task_count
-                    print(f"  ✅ {target_date}: {task_count} task relations updated")
+                    print(f"  {target_date}: {task_count} task relations updated")
         
         # Update cache timestamps
         if not args.full and errors == []:
             # Only update cache if no errors occurred
             sync_cache.update_last_sync_time('tasks')
             sync_cache.update_last_sync_time('time_entries')
-            print(f"💾 Cache updated")
+            print(f"Cache updated")
         elif args.full:
             # Reset cache for full sync
             sync_cache.update_last_sync_time('tasks')
             sync_cache.update_last_sync_time('time_entries')
-            print(f"💾 Cache reset")
+            print(f"Cache reset")
         
         # Display summary
-        print(f"\n🎉 Sync complete!")
-        print(f"  📋 Dates processed: {len(dates) - len(errors)}/{len(dates)}")
-        print(f"  📊 Total relations updated: {total_relations}")
+        print(f"\nSync complete!")
+        print(f"  Dates processed: {len(dates) - len(errors)}/{len(dates)}")
+        print(f"  Total relations updated: {total_relations}")
         
         if errors:
-            print(f"\n⚠️  {len(errors)} errors encountered:")
+            print(f"\nWARNING: {len(errors)} errors encountered:")
             for error in errors[:5]:
                 print(f"  • {error}")
             if len(errors) > 5:
                 print(f"  ... and {len(errors) - 5} more")
         
     except ValueError as e:
-        print(f"❌ {e}")
+        print(f"ERROR: {e}")
         sys.exit(1)
     except Exception as e:
         logger.error(f"Sync failed: {e}")
-        print(f"❌ Sync failed: {e}")
+        print(f"ERROR: Sync failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+
+def cmd_daemon_start(args):
+    """Start the TOAD daemon."""
+    print("TOAD Daemon - Start")
+
+    manager = DaemonManager()
+    result = manager.start()
+
+    if result["success"]:
+        print(f"✓ {result['message']}")
+        print(f"  Log file: {manager.log_file}")
+    else:
+        print(f"ERROR: {result['message']}")
+        sys.exit(1)
+
+
+def cmd_daemon_stop(args):
+    """Stop the TOAD daemon."""
+    print("TOAD Daemon - Stop")
+
+    manager = DaemonManager()
+    result = manager.stop()
+
+    if result["success"]:
+        print(f"✓ {result['message']}")
+    else:
+        print(f"ERROR: {result['message']}")
+        sys.exit(1)
+
+
+def cmd_daemon_restart(args):
+    """Restart the TOAD daemon."""
+    print("TOAD Daemon - Restart")
+
+    manager = DaemonManager()
+    result = manager.restart()
+
+    if result["success"]:
+        print(f"✓ {result['message']}")
+        print(f"  Log file: {manager.log_file}")
+    else:
+        print(f"ERROR: {result['message']}")
+        sys.exit(1)
+
+
+def cmd_daemon_status(args):
+    """Show daemon status."""
+    print("TOAD Daemon - Status")
+
+    manager = DaemonManager()
+    status = manager.status()
+
+    if status["running"]:
+        print(f"✓ Daemon is RUNNING")
+        print(f"  PID: {status['pid']}")
+        if status["uptime"]:
+            print(f"  Uptime: {status['uptime']}")
+    else:
+        print("  Daemon is STOPPED")
+
+    print(f"  PID file: {status['pid_file']}")
+    print(f"  Log file: {status['log_file']}")
+
 
 def main():
     """Main CLI entry point."""
@@ -413,6 +478,22 @@ Performance Targets:
     all_parser.add_argument('--full', action='store_true', help='Full sync: last 30 days')
     all_parser.add_argument('--dry-run', action='store_true', help='Preview without updating Notion')
 
+    # Daemon command
+    daemon_parser = subparsers.add_parser('daemon', help='Manage TOAD daemon')
+    daemon_subparsers = daemon_parser.add_subparsers(dest='action', help='Daemon action')
+
+    # Daemon start
+    daemon_start_parser = daemon_subparsers.add_parser('start', help='Start the daemon')
+
+    # Daemon stop
+    daemon_stop_parser = daemon_subparsers.add_parser('stop', help='Stop the daemon')
+
+    # Daemon restart
+    daemon_restart_parser = daemon_subparsers.add_parser('restart', help='Restart the daemon')
+
+    # Daemon status
+    daemon_status_parser = daemon_subparsers.add_parser('status', help='Show daemon status')
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -421,29 +502,51 @@ Performance Targets:
         parser.print_help()
         sys.exit(1)
 
-    if args.command != 'sync':
-        print(f"❌ Unknown command: {args.command}")
-        parser.print_help()
-        sys.exit(1)
+    # Handle commands
+    if args.command == 'sync':
+        # Validate module
+        if not args.module:
+            sync_parser.print_help()
+            sys.exit(1)
 
-    # Validate module
-    if not args.module:
-        sync_parser.print_help()
-        sys.exit(1)
+        # Execute appropriate sync command
+        if args.module == 'productivity':
+            cmd_sync_productivity(args)
+        elif args.module == 'health':
+            cmd_sync_health(args)
+        elif args.module == 'all':
+            # TODO: Implement all modules sync
+            print("WARNING: Sync all modules not yet implemented")
+            print("    Use: toad sync productivity or toad sync health")
+            sys.exit(1)
+        else:
+            print(f"ERROR: Unknown module: {args.module}")
+            sync_parser.print_help()
+            sys.exit(1)
 
-    # Execute appropriate sync command
-    if args.module == 'productivity':
-        cmd_sync_productivity(args)
-    elif args.module == 'health':
-        cmd_sync_health(args)
-    elif args.module == 'all':
-        # TODO: Implement all modules sync
-        print("⚠️  Sync all modules not yet implemented")
-        print("    Use: toad sync productivity or toad sync health")
-        sys.exit(1)
+    elif args.command == 'daemon':
+        # Validate action
+        if not args.action:
+            daemon_parser.print_help()
+            sys.exit(1)
+
+        # Execute daemon command
+        if args.action == 'start':
+            cmd_daemon_start(args)
+        elif args.action == 'stop':
+            cmd_daemon_stop(args)
+        elif args.action == 'restart':
+            cmd_daemon_restart(args)
+        elif args.action == 'status':
+            cmd_daemon_status(args)
+        else:
+            print(f"ERROR: Unknown daemon action: {args.action}")
+            daemon_parser.print_help()
+            sys.exit(1)
+
     else:
-        print(f"❌ Unknown module: {args.module}")
-        sync_parser.print_help()
+        print(f"ERROR: Unknown command: {args.command}")
+        parser.print_help()
         sys.exit(1)
 
 if __name__ == '__main__':

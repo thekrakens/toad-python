@@ -11,7 +11,7 @@ JSON Format:
 
 from pathlib import Path
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from toad.health.models import WorkoutData
@@ -185,13 +185,14 @@ class HealthAutoExportParser:
             date_str: Date string (e.g., "2026-01-17 10:51:41 -0800")
 
         Returns:
-            datetime object (timezone-naive, local time)
+            datetime object (timezone-aware, UTC)
         """
         # Format: "2026-01-17 10:51:41 -0800"
-        # We'll parse without timezone for now (just use local time)
+        # Parse as UTC (assuming the data is normalized to UTC)
         date_part = date_str.rsplit(' ', 1)[0]  # Remove timezone offset
 
         try:
-            return datetime.strptime(date_part, "%Y-%m-%d %H:%M:%S")
+            dt = datetime.strptime(date_part, "%Y-%m-%d %H:%M:%S")
+            return dt.replace(tzinfo=timezone.utc)
         except ValueError as e:
             raise ValueError(f"Failed to parse date '{date_str}': {e}")

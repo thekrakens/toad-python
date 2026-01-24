@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Service Label -->
+    <key>Label</key>
+    <string>com.toad.daemon</string>
+
+    <!-- Program to run -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>-m</string>
+        <string>toad.daemon.daemon</string>
+    </array>
+
+    <!-- Working Directory -->
+    <key>WorkingDirectory</key>
+    <string>/Users/thekrakens</string>
+
+    <!-- Environment Variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <!-- Run at load (auto-start on boot) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Keep alive (restart if crashes) -->
+    <key>KeepAlive</key>
+    <dict>
+        <!-- Always keep alive -->
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Restart on crash with throttle -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>/Users/thekrakens/.toad/daemon.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/thekrakens/.toad/daemon.log</string>
+
+    <!-- Process type (Background daemon) -->
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- Don't run as root -->
+    <key>UserName</key>
+    <string>thekrakens</string>
+
+    <!-- Session Type -->
+    <key>SessionCreate</key>
+    <true/>
+</dict>
+</plist>
