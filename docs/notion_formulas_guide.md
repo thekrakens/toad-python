@@ -72,7 +72,35 @@ prop("Worked").length()
 
 ---
 
-### 5. Effective Hours Worked
+### 5. Tasks Backlog Count
+
+**Current:** None (need to add new property)
+**Add as:** Formula property named "Tasks Backlog Count"
+
+**Formula:**
+```
+prop("Backlog").length()
+```
+
+**What it does:** Counts how many tasks were moved to backlog on this date
+
+---
+
+### 6. Tasks Archived Count
+
+**Current:** None (need to add new property)
+**Add as:** Formula property named "Tasks Archived Count"
+
+**Formula:**
+```
+prop("Archived").length()
+```
+
+**What it does:** Counts how many tasks were archived on this date
+
+---
+
+### 7. Effective Hours Worked
 
 **Current:** Number property (likely empty)
 **Change to:** Rollup
@@ -91,7 +119,7 @@ prop("Worked").map(current.prop("Logged Hrs.")).sum()
 
 ---
 
-### 6. Planned Working Hours
+### 8. Planned Working Hours
 
 **Current:** Number property (likely empty)
 **Change to:** Rollup
@@ -110,7 +138,7 @@ prop("Planned").map(current.prop("Planned Hrs.")).sum()
 
 ---
 
-### 7. Time on Planned Tasks
+### 9. Time on Planned Tasks
 
 **Current:** Number property (likely empty)
 **Change to:** Formula
@@ -129,7 +157,7 @@ prop("Worked").filter(current.id().inside(prop("Planned").map(current.id()))).ma
 
 ---
 
-### 8. Time on Unplanned Tasks
+### 10. Time on Unplanned Tasks
 
 **Current:** Number property (likely empty)
 **Change to:** Formula
@@ -143,7 +171,7 @@ prop("Effective Hours Worked") - prop("Time on Planned Tasks")
 
 ---
 
-### 9. Task Completion Rate %
+### 11. Task Completion Rate %
 
 **Current:** Number property (likely empty)
 **Change to:** Formula
@@ -157,7 +185,7 @@ if(prop("Tasks Planned Count") > 0, round(prop("Done").length() / prop("Tasks Pl
 
 ---
 
-### 10. Schedule Adherence %
+### 12. Schedule Adherence %
 
 **Current:** Number property (likely empty)
 **Change to:** Formula
@@ -171,7 +199,7 @@ if(prop("Planned Working Hours") > 0, round(min(prop("Effective Hours Worked") /
 
 ---
 
-### 11. Planned vs Unplanned %
+### 13. Planned vs Unplanned %
 
 **Current:** Formula (already exists)
 **Verify it matches:**
@@ -185,7 +213,7 @@ if(prop("Effective Hours Worked") > 0, round((prop("Time on Planned Tasks") / pr
 
 ---
 
-### 12. Productivity Score
+### 14. Productivity Score
 
 **Current:** Number property (likely empty or manual)
 **Change to:** Formula
@@ -217,7 +245,7 @@ lets(
 
 ---
 
-### 13. Unplanned Tasks Created
+### 15. Unplanned Tasks Created
 
 **Current:** Number property (likely empty)
 **Change to:** Formula
@@ -231,7 +259,7 @@ prop("Worked").filter(not current.id().inside(prop("Planned").map(current.id()))
 
 ---
 
-### 14. Context Switches (Advanced)
+### 16. Context Switches (Advanced)
 
 **Current:** Number property (likely manual)
 **Keep as:** Number (manual entry for now)
@@ -242,7 +270,7 @@ prop("Worked").filter(not current.id().inside(prop("Planned").map(current.id()))
 
 ---
 
-### 15. Cold Tasks Count (Optional)
+### 17. Cold Tasks Count (Optional)
 
 **Current:** Number property
 **Keep as:** Number (manual entry or custom definition)
@@ -259,6 +287,8 @@ prop("Worked").filter(not current.id().inside(prop("Planned").map(current.id()))
 | Tasks Active Count | Number → Formula | ✅ Update | Easy |
 | Tasks Completed Count | ➕ Add new | ✅ Add | Easy |
 | Tasks Worked Count | ➕ Add new | ✅ Add | Easy |
+| Tasks Backlog Count | ➕ Add new | ✅ Add | Easy |
+| Tasks Archived Count | ➕ Add new | ✅ Add | Easy |
 | Effective Hours Worked | Number → Rollup | ✅ Update | Easy |
 | Planned Working Hours | Number → Rollup | ✅ Update | Easy |
 | Time on Planned Tasks | Number → Formula | ✅ Update | Medium |

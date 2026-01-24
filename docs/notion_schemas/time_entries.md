@@ -2,16 +2,18 @@
 
 **Database Name:** Time Entries
 **Database ID:** `20425796-66bd-8143-b976-eff463de13da`
-**Last Updated:** 2026-01-19 13:24:55
+**Last Updated:** 2026-01-19 19:31:56
 
 ## Properties
 
 | Property Name | Type | Configuration |
 |---------------|------|---------------|
 | Created Today | formula | Formula: `formatDate({{notion:block_property:%60_Hd:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, "YYYY-MM-DD") == formatDate(now(), "YYYY-MM-DD")` |
+| Duration (mins) | formula | Formula: `dateBetween({{notion:block_property:fY%5Er:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},{{notion:block_property:%60_Hd:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, "minutes")` |
 | End | date | Date field |
 | Language | select | Options: ABAP, ABC, Agda, Arduino, ASCII Art, Assembly, Bash, BASIC, BNF, C, C#, C++, Clojure, CoffeeScript, Coq, CSS, Dart, Dhall, Diff, Docker, EBNF, Elixir, Elm, Erlang, F#, Flow, Fortran, Gherkin, GLSL, Go, GraphQL, Groovy, Haskell, HCL, HTML, Idris, Java, JavaScript, JSON, Julia, Kotlin, LaTeX, Less, Lisp, LiveScript, LLVM IR, Lua, Makefile, Markdown, Markup, MATLAB, Mathematica, Mermaid, Nix, Notion Formula, Objective-C, OCaml, Pascal, Perl, PHP, Plain Text, PowerShell, Prolog, Protobuf, PureScript, Python, R, Racket, Reason, Ruby, Rust, Sass, Scala, Scheme, Scss, Shell, Smalltalk, Solidity, SQL, Swift, TOML, TypeScript, VB.Net, Verilog, VHDL, Visual Basic, WebAssembly, XML, YAML, Java/C/C++/C#, NotionScript |
 | Name | title | - |
+| Name (formula) | formula | Formula: `{{notion:block_property:uAj%40:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.first().{{notion:block_property:title:20425796-66bd-81f5-b759-e03fe4eb42f2:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} + " - " + formatDate({{notion:block_property:%60_Hd:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, "h:mm A")` |
 | Start | date | Date field |
 | Stop Timer | button | - |
 | Task | relation | → Database: 20425796-66bd-81f5-b759-e03fe4eb42f2 |
@@ -21,7 +23,6 @@
 	style(style( "🛑 Timer Stopped", "red"), "b")
 )` |
 | comments | rich_text | - |
-| mins | formula | Formula: `dateBetween({{notion:block_property:fY%5Er:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},{{notion:block_property:%60_Hd:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, "minutes")` |
 
 
 ## Raw Schema (JSON)
@@ -36,13 +37,21 @@
   "title": "Time Entries",
   "description": "",
   "properties": {
-    "mins": {
+    "Duration (mins)": {
       "type": "formula",
       "id": "CDEJ",
       "config": {
         "expression": "dateBetween({{notion:block_property:fY%5Er:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},{{notion:block_property:%60_Hd:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, \"minutes\")"
       },
       "config_formatted": "Formula: `dateBetween({{notion:block_property:fY%5Er:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},{{notion:block_property:%60_Hd:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, \"minutes\")`"
+    },
+    "Name (formula)": {
+      "type": "formula",
+      "id": "CI%5B%3C",
+      "config": {
+        "expression": "{{notion:block_property:uAj%40:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.first().{{notion:block_property:title:20425796-66bd-81f5-b759-e03fe4eb42f2:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} + \" - \" + formatDate({{notion:block_property:%60_Hd:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, \"h:mm A\")"
+      },
+      "config_formatted": "Formula: `{{notion:block_property:uAj%40:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.first().{{notion:block_property:title:20425796-66bd-81f5-b759-e03fe4eb42f2:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} + \" - \" + formatDate({{notion:block_property:%60_Hd:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, \"h:mm A\")`"
     },
     "Created Today": {
       "type": "formula",

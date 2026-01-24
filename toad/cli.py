@@ -279,7 +279,7 @@ def cmd_sync_productivity(args):
             else:
                 task_count = sum(
                     result[rel_type]['task_count']
-                    for rel_type in ['planned', 'active', 'worked', 'done']
+                    for rel_type in ['planned', 'active', 'worked', 'done', 'backlog', 'archived']
                     if result[rel_type]['success']
                 )
                 total_relations += task_count
@@ -299,7 +299,7 @@ def cmd_sync_productivity(args):
                     # Count total tasks across all relation types
                     task_count = sum(
                         result[rel_type]['task_count']
-                        for rel_type in ['planned', 'active', 'worked', 'done']
+                        for rel_type in ['planned', 'active', 'worked', 'done', 'backlog', 'archived']
                         if result[rel_type]['success']
                     )
                     total_relations += task_count

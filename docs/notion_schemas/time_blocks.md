@@ -2,13 +2,14 @@
 
 **Database Name:** Planned Time Blocks
 **Database ID:** `2282579666bd803db27de8b6b6938b26`
-**Last Updated:** 2026-01-19 13:24:56
+**Last Updated:** 2026-01-19 19:31:56
 
 ## Properties
 
 | Property Name | Type | Configuration |
 |---------------|------|---------------|
-| End Time | date | Date field |
+| Duration (mins) | number | Format: number |
+| End Time | formula | Formula: `dateAdd({{notion:block_property:v%3Cgc:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},{{notion:block_property:CtF%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, "minutes")` |
 | Name | title | - |
 | Start Time | date | Date field |
 | Task | relation | → Database: 20425796-66bd-81f5-b759-e03fe4eb42f2 |
@@ -26,11 +27,21 @@
   "title": "Planned Time Blocks",
   "description": "",
   "properties": {
+    "Duration (mins)": {
+      "type": "number",
+      "id": "CtF%5E",
+      "config": {
+        "format": "number"
+      },
+      "config_formatted": "Format: number"
+    },
     "End Time": {
-      "type": "date",
+      "type": "formula",
       "id": "HkZ%5C",
-      "config": {},
-      "config_formatted": "Date field"
+      "config": {
+        "expression": "dateAdd({{notion:block_property:v%3Cgc:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},{{notion:block_property:CtF%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, \"minutes\")"
+      },
+      "config_formatted": "Formula: `dateAdd({{notion:block_property:v%3Cgc:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},{{notion:block_property:CtF%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, \"minutes\")`"
     },
     "Task": {
       "type": "relation",

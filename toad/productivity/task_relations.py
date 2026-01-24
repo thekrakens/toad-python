@@ -210,38 +210,38 @@ class TaskRelationsManager:
         """
         Get task IDs for tasks that were active on the target date.
         Active tasks are those that were planned OR worked on OR have earlier planning that's not done.
-        
+
         Args:
             tasks_df: DataFrame with task data
             time_entries_df: DataFrame with time entry data
             target_date: Target date (date object)
-            
+
         Returns:
             List of task IDs (page_id values)
         """
         active_tasks = set()
-        
+
         # Add planned tasks
         planned_tasks = self._get_planned_tasks(tasks_df, target_date)
         active_tasks.update(planned_tasks)
-        
+
         # Add worked tasks
         worked_tasks = self._get_worked_tasks(time_entries_df, target_date)
         active_tasks.update(worked_tasks)
-        
+
         # Add tasks with earlier planning that aren't done yet
         if not tasks_df.empty and 'page_id' in tasks_df.columns:
             # Get PST day boundaries
             utc_start, utc_end = self._get_pst_day_boundaries_utc(target_date)
-            
+
             # Check for tasks planned before today that aren't completed
             if 'Planned Timeline' in tasks_df.columns:
                 planned_times = pd.to_datetime(tasks_df['Planned Timeline'], errors='coerce', utc=True)
                 planned_timestamps = (planned_times.astype('int64') // 10**9).fillna(0).astype(int)
-                
+
                 # Tasks planned before today
                 earlier_planned_mask = (planned_timestamps > 0) & (planned_timestamps < utc_start)
-                
+
                 # Check if not completed
                 if 'Done' in tasks_df.columns:
                     done_times = pd.to_datetime(tasks_df['Done'], errors='coerce', utc=True)
@@ -255,11 +255,79 @@ class TaskRelationsManager:
                     # Check if status is not "done" or "completed"
                     not_done_status = ~tasks_df['Status'].str.lower().isin(['done', 'completed'])
                     earlier_planned_mask = earlier_planned_mask & not_done_status
-                
+
                 earlier_planned_ids = tasks_df[earlier_planned_mask]['page_id'].tolist()
                 active_tasks.update(earlier_planned_ids)
-        
+
         return list(active_tasks)
+
+    def _get_backlog_tasks(self, tasks_df: pd.DataFrame, target_date: date) -> List[str]:
+        """
+        Get task IDs for tasks that were moved to backlog on the target date.
+
+        Args:
+            tasks_df: DataFrame with task data
+            target_date: Target date (date object)
+
+        Returns:
+            List of task IDs (page_id values)
+        """
+        if tasks_df.empty or 'page_id' not in tasks_df.columns:
+            return []
+
+        backlog_task_ids = []
+
+        # Get PST day boundaries as UTC unix timestamps
+        utc_start, utc_end = self._get_pst_day_boundaries_utc(target_date)
+
+        # Check for "Backlog Date" column
+        if 'Backlog Date' in tasks_df.columns:
+            backlog_times = pd.to_datetime(tasks_df['Backlog Date'], errors='coerce', utc=True)
+            backlog_timestamps = (backlog_times.astype('int64') // 10**9).fillna(0).astype(int)
+
+            # Filter tasks backlogged within the PST day (in UTC)
+            backlog_mask = (
+                (backlog_timestamps >= utc_start) &
+                (backlog_timestamps <= utc_end)
+            )
+
+            backlog_task_ids = tasks_df[backlog_mask]['page_id'].tolist()
+
+        return backlog_task_ids
+
+    def _get_archived_tasks(self, tasks_df: pd.DataFrame, target_date: date) -> List[str]:
+        """
+        Get task IDs for tasks that were archived on the target date.
+
+        Args:
+            tasks_df: DataFrame with task data
+            target_date: Target date (date object)
+
+        Returns:
+            List of task IDs (page_id values)
+        """
+        if tasks_df.empty or 'page_id' not in tasks_df.columns:
+            return []
+
+        archived_task_ids = []
+
+        # Get PST day boundaries as UTC unix timestamps
+        utc_start, utc_end = self._get_pst_day_boundaries_utc(target_date)
+
+        # Check for "Archived Date" column
+        if 'Archived Date' in tasks_df.columns:
+            archived_times = pd.to_datetime(tasks_df['Archived Date'], errors='coerce', utc=True)
+            archived_timestamps = (archived_times.astype('int64') // 10**9).fillna(0).astype(int)
+
+            # Filter tasks archived within the PST day (in UTC)
+            archived_mask = (
+                (archived_timestamps >= utc_start) &
+                (archived_timestamps <= utc_end)
+            )
+
+            archived_task_ids = tasks_df[archived_mask]['page_id'].tolist()
+
+        return archived_task_ids
     
     def process_daily_task_relations(self, target_date: date) -> Dict[str, Any]:
         """
@@ -326,12 +394,12 @@ class TaskRelationsManager:
                                     time_entries_df: pd.DataFrame) -> Dict[str, Any]:
         """
         Internal method to process relations with provided data.
-        
+
         Args:
             target_date: Date to process relations for
             tasks_df: Tasks DataFrame
             time_entries_df: Time entries DataFrame
-            
+
         Returns:
             Dict with results of the operation
         """
@@ -340,18 +408,20 @@ class TaskRelationsManager:
         active_ids = self._get_active_tasks(tasks_df, time_entries_df, target_date)
         worked_ids = self._get_worked_tasks(time_entries_df, target_date)
         done_ids = self._get_done_tasks(tasks_df, target_date)
-        
-        logger.info(f"Found: {len(planned_ids)} planned, {len(active_ids)} active, {len(worked_ids)} worked, {len(done_ids)} done")
-        
+        backlog_ids = self._get_backlog_tasks(tasks_df, target_date)
+        archived_ids = self._get_archived_tasks(tasks_df, target_date)
+
+        logger.info(f"Found: {len(planned_ids)} planned, {len(active_ids)} active, {len(worked_ids)} worked, {len(done_ids)} done, {len(backlog_ids)} backlog, {len(archived_ids)} archived")
+
         # Find or create Daily Metrics entry for this date
         metrics_entry_id = self._find_or_create_daily_metrics_entry(target_date)
-        
+
         if not metrics_entry_id:
             return {
                 "error": "Failed to find or create Daily Metrics entry",
                 "target_date": str(target_date)
             }
-        
+
         # Update relations
         result = {
             "target_date": str(target_date),
@@ -359,9 +429,11 @@ class TaskRelationsManager:
             "planned": self._update_relation(metrics_entry_id, "Planned", planned_ids),
             "active": self._update_relation(metrics_entry_id, "Active", active_ids),
             "worked": self._update_relation(metrics_entry_id, "Worked", worked_ids),
-            "done": self._update_relation(metrics_entry_id, "Done", done_ids)
+            "done": self._update_relation(metrics_entry_id, "Done", done_ids),
+            "backlog": self._update_relation(metrics_entry_id, "Backlog", backlog_ids),
+            "archived": self._update_relation(metrics_entry_id, "Archived", archived_ids)
         }
-        
+
         return result
     
     def _find_or_create_daily_metrics_entry(self, target_date: date) -> str:
@@ -480,7 +552,7 @@ class TaskRelationsManager:
         """
         Build a Notion filter to query only tasks relevant to the target date.
 
-        Fetches tasks where Planned, Done, or Doing date matches target_date.
+        Fetches tasks where Planned, Done, Doing, Backlog Date, or Archived Date matches target_date.
         Also includes tasks planned before target_date that aren't done (for "Active").
 
         Args:
@@ -491,7 +563,7 @@ class TaskRelationsManager:
         """
         date_str = target_date.strftime('%Y-%m-%d')
 
-        # Query tasks where Planned OR Done OR Doing equals target date
+        # Query tasks where Planned OR Done OR Doing OR Backlog Date OR Archived Date equals target date
         # OR tasks planned before today that aren't done
         return {
             "or": [
@@ -505,6 +577,14 @@ class TaskRelationsManager:
                 },
                 {
                     "property": "Doing",
+                    "date": {"equals": date_str}
+                },
+                {
+                    "property": "Backlog Date",
+                    "date": {"equals": date_str}
+                },
+                {
+                    "property": "Archived Date",
                     "date": {"equals": date_str}
                 },
                 # Include tasks planned before target date that might still be active
@@ -569,6 +649,8 @@ class TaskRelationsManager:
             active_ids = self._get_active_tasks(tasks_df, time_entries_df, target_date)
             worked_ids = self._get_worked_tasks(time_entries_df, target_date)
             done_ids = self._get_done_tasks(tasks_df, target_date)
+            backlog_ids = self._get_backlog_tasks(tasks_df, target_date)
+            archived_ids = self._get_archived_tasks(tasks_df, target_date)
 
             return {
                 "target_date": str(target_date),
@@ -576,10 +658,14 @@ class TaskRelationsManager:
                 "active_count": len(active_ids),
                 "worked_count": len(worked_ids),
                 "done_count": len(done_ids),
+                "backlog_count": len(backlog_ids),
+                "archived_count": len(archived_ids),
                 "planned_ids": planned_ids,
                 "active_ids": active_ids,
                 "worked_ids": worked_ids,
-                "done_ids": done_ids
+                "done_ids": done_ids,
+                "backlog_ids": backlog_ids,
+                "archived_ids": archived_ids
             }
 
         except Exception as e:

@@ -2,35 +2,58 @@
 
 **Database Name:** Tasks
 **Database ID:** `20425796-66bd-81f5-b759-e03fe4eb42f2`
-**Last Updated:** 2026-01-19 13:24:55
+**Last Updated:** 2026-01-19 19:31:55
 
 ## Properties
 
 | Property Name | Type | Configuration |
 |---------------|------|---------------|
+| Archived Date | date | Date field |
+| Backlog Date | date | Date field |
 | Create Entry | button | - |
 | Created time | created_time | - |
 | Daily Metrics | relation | → Database: 20425796-66bd-8171-92ad-da80f18fdf02 |
 | Doing | date | Date field |
-| Done | date | Date field |
+| Done | formula | Formula: `if(
+  empty({{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}),
+  {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},
+  if(
+    empty({{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}),
+    {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},
+    if(
+      dateBetween({{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, "hours") >= 2,
+      {{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},
+      {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}
+    )
+  )
+)` |
 | Due | date | Date field |
 | Feature | multi_select | Options: auto calibration, beta customer engagement, bttc, habits, health, productivity, streamlit app |
-| Logged Hrs. | formula | Formula: `{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum()` |
+| Logged Time (hrs) | formula | Formula: `{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum() / 60` |
+| Logged Time (mins) | formula | Formula: `{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum()` |
 | Name | title | - |
 | Parent item | relation | → Database: 20425796-66bd-81f5-b759-e03fe4eb42f2 |
 | Planned | date | Date field |
 | Planned Hrs. | formula | Formula: `if({{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, dateBetween({{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.dateEnd(), {{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.dateStart(), "hours"), {{notion:block_property:axej:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}})` |
+| Planned Time (hrs) | formula | Formula: `{{notion:block_property:tfgh:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} / 60` |
+| Planned Time (mins) | rollup | From: Time Blocks.Duration (mins) | Function: sum |
 | Projects | relation | → Database: 20425796-66bd-8147-a8cc-ebe5658fbdda |
 | Related to Daily Productivity Metrics (Active Tasks) | relation | → Database: 23525796-66bd-8017-a464-c1a7d32d35c4 |
+| Related to Daily Productivity Metrics (Archived) | relation | → Database: 23525796-66bd-8017-a464-c1a7d32d35c4 |
+| Related to Daily Productivity Metrics (Backlog) | relation | → Database: 23525796-66bd-8017-a464-c1a7d32d35c4 |
 | Related to Daily Productivity Metrics (Completed Tasks) | relation | → Database: 23525796-66bd-8017-a464-c1a7d32d35c4 |
 | Related to Daily Productivity Metrics (Planned Tasks) | relation | → Database: 23525796-66bd-8017-a464-c1a7d32d35c4 |
 | Related to Daily Productivity Metrics (Worked On Tasks) | relation | → Database: 23525796-66bd-8017-a464-c1a7d32d35c4 |
-| Status | status | Groups: To-do, In progress, Complete | Options: todo, doing, paused, done |
+| Status | status | Groups: To-do, In progress, Complete | Options: todo, backlog, doing, paused, done, archived |
 | Sub-item | relation | → Database: 20425796-66bd-81f5-b759-e03fe4eb42f2 |
 | Task Type | multi_select | Options: Meeting, R&D, coding, fixing, analysis, tests, planning, personal, documentation, deploy, cleanup |
 | Time Blocks | relation | → Database: 22825796-66bd-803d-b27d-e8b6b6938b26 |
 | Time Entries | relation | → Database: 20425796-66bd-8143-b976-eff463de13da |
-| Total Block Duration (hrs) | formula | Formula: `round({{notion:block_property:tfgh:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} / 60 * 100) / 100` |
+| lastTimeEntryEnd | formula | Formula: `{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}
+    .sort(current.{{notion:block_property:fY%5Er:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}})
+    .last()
+    .{{notion:block_property:fY%5Er:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} ` |
+| setToDoneTime | date | Date field |
 | ⏰ PLANNING ⏰ | rich_text | - |
 | 🏴‍☠️ FLAGS🏴‍☠️  | rich_text | - |
 | 📊 AUTO METRICS 📊  | rich_text | - |
@@ -72,6 +95,12 @@
       "config": {},
       "config_formatted": "Date field"
     },
+    "Backlog Date": {
+      "type": "date",
+      "id": "%3Az%3EI",
+      "config": {},
+      "config_formatted": "Date field"
+    },
     "Related to Daily Productivity Metrics (Worked On Tasks)": {
       "type": "relation",
       "id": "%3BIPk",
@@ -87,6 +116,14 @@
       "config_formatted": "\u2192 Database: 23525796-66bd-8017-a464-c1a7d32d35c4"
     },
     "Done": {
+      "type": "formula",
+      "id": "%3By%5Em",
+      "config": {
+        "expression": "if(\n  empty({{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}),\n  {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},\n  if(\n    empty({{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}),\n    {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},\n    if(\n      dateBetween({{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, \"hours\") >= 2,\n      {{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},\n      {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}\n    )\n  )\n)"
+      },
+      "config_formatted": "Formula: `if(\n  empty({{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}),\n  {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},\n  if(\n    empty({{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}),\n    {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},\n    if(\n      dateBetween({{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, \"hours\") >= 2,\n      {{notion:block_property:vUD%5E:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}},\n      {{notion:block_property:%3DT%5Bb:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}\n    )\n  )\n)`"
+    },
+    "setToDoneTime": {
       "type": "date",
       "id": "%3DT%5Bb",
       "config": {},
@@ -298,6 +335,20 @@
       },
       "config_formatted": "\u2192 Database: 20425796-66bd-81f5-b759-e03fe4eb42f2"
     },
+    "Related to Daily Productivity Metrics (Backlog)": {
+      "type": "relation",
+      "id": "UeWq",
+      "config": {
+        "database_id": "23525796-66bd-8017-a464-c1a7d32d35c4",
+        "data_source_id": "23525796-66bd-80bb-9d91-000b89804e1c",
+        "type": "dual_property",
+        "dual_property": {
+          "synced_property_name": "Backlog",
+          "synced_property_id": "%5Ex%5Ey"
+        }
+      },
+      "config_formatted": "\u2192 Database: 23525796-66bd-8017-a464-c1a7d32d35c4"
+    },
     "Created time": {
       "type": "created_time",
       "id": "Yefl",
@@ -310,13 +361,13 @@
       "config": {},
       "config_formatted": ""
     },
-    "Total Block Duration (hrs)": {
+    "Planned Time (hrs)": {
       "type": "formula",
       "id": "axej",
       "config": {
-        "expression": "round({{notion:block_property:tfgh:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} / 60 * 100) / 100"
+        "expression": "{{notion:block_property:tfgh:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} / 60"
       },
-      "config_formatted": "Formula: `round({{notion:block_property:tfgh:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} / 60 * 100) / 100`"
+      "config_formatted": "Formula: `{{notion:block_property:tfgh:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} / 60`"
     },
     "Planned Hrs.": {
       "type": "formula",
@@ -325,6 +376,12 @@
         "expression": "if({{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, dateBetween({{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.dateEnd(), {{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.dateStart(), \"hours\"), {{notion:block_property:axej:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}})"
       },
       "config_formatted": "Formula: `if({{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}, dateBetween({{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.dateEnd(), {{notion:block_property:%3AP%3Fv:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.dateStart(), \"hours\"), {{notion:block_property:axej:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}})`"
+    },
+    "Archived Date": {
+      "type": "date",
+      "id": "cqf%3F",
+      "config": {},
+      "config_formatted": "Date field"
     },
     "Status": {
       "type": "status",
@@ -338,6 +395,12 @@
             "description": null
           },
           {
+            "id": "]gcF",
+            "name": "backlog",
+            "color": "brown",
+            "description": null
+          },
+          {
             "id": "7e935533-c1e8-4542-ad4c-bd1375eaf0cc",
             "name": "doing",
             "color": "yellow",
@@ -346,13 +409,19 @@
           {
             "id": "`M;A",
             "name": "paused",
-            "color": "red",
+            "color": "orange",
             "description": null
           },
           {
             "id": "0cbe2e97-0d37-4e8a-9585-fe7b34363b9f",
             "name": "done",
             "color": "green",
+            "description": null
+          },
+          {
+            "id": "PkoR",
+            "name": "archived",
+            "color": "red",
             "description": null
           }
         ],
@@ -362,6 +431,7 @@
             "name": "To-do",
             "color": "gray",
             "option_ids": [
+              "]gcF",
               "a53b3d91-1655-4589-9e85-10f3bf7c6ad2"
             ]
           },
@@ -370,8 +440,8 @@
             "name": "In progress",
             "color": "blue",
             "option_ids": [
-              "`M;A",
-              "7e935533-c1e8-4542-ad4c-bd1375eaf0cc"
+              "7e935533-c1e8-4542-ad4c-bd1375eaf0cc",
+              "`M;A"
             ]
           },
           {
@@ -379,12 +449,27 @@
             "name": "Complete",
             "color": "green",
             "option_ids": [
-              "0cbe2e97-0d37-4e8a-9585-fe7b34363b9f"
+              "0cbe2e97-0d37-4e8a-9585-fe7b34363b9f",
+              "PkoR"
             ]
           }
         ]
       },
-      "config_formatted": "Groups: To-do, In progress, Complete | Options: todo, doing, paused, done"
+      "config_formatted": "Groups: To-do, In progress, Complete | Options: todo, backlog, doing, paused, done, archived"
+    },
+    "Related to Daily Productivity Metrics (Archived)": {
+      "type": "relation",
+      "id": "fSjg",
+      "config": {
+        "database_id": "23525796-66bd-8017-a464-c1a7d32d35c4",
+        "data_source_id": "23525796-66bd-80bb-9d91-000b89804e1c",
+        "type": "dual_property",
+        "dual_property": {
+          "synced_property_name": "Archived",
+          "synced_property_id": "KGI%3E"
+        }
+      },
+      "config_formatted": "\u2192 Database: 23525796-66bd-8017-a464-c1a7d32d35c4"
     },
     "Create Entry": {
       "type": "button",
@@ -420,13 +505,13 @@
       },
       "config_formatted": "\u2192 Database: 22825796-66bd-803d-b27d-e8b6b6938b26"
     },
-    "Logged Hrs.": {
+    "Logged Time (hrs)": {
       "type": "formula",
       "id": "pGr%5E",
       "config": {
-        "expression": "{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum()"
+        "expression": "{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum() / 60"
       },
-      "config_formatted": "Formula: `{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum()`"
+      "config_formatted": "Formula: `{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum() / 60`"
     },
     "Related to Daily Productivity Metrics (Planned Tasks)": {
       "type": "relation",
@@ -442,6 +527,18 @@
       },
       "config_formatted": "\u2192 Database: 23525796-66bd-8017-a464-c1a7d32d35c4"
     },
+    "Planned Time (mins)": {
+      "type": "rollup",
+      "id": "tfgh",
+      "config": {
+        "rollup_property_name": "Duration (mins)",
+        "relation_property_name": "Time Blocks",
+        "rollup_property_id": "CtF^",
+        "relation_property_id": "nDsi",
+        "function": "sum"
+      },
+      "config_formatted": "From: Time Blocks.Duration (mins) | Function: sum"
+    },
     "Time Entries": {
       "type": "relation",
       "id": "tvv%5C",
@@ -456,6 +553,14 @@
       },
       "config_formatted": "\u2192 Database: 20425796-66bd-8143-b976-eff463de13da"
     },
+    "lastTimeEntryEnd": {
+      "type": "formula",
+      "id": "vUD%5E",
+      "config": {
+        "expression": "{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}\n    .sort(current.{{notion:block_property:fY%5Er:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}})\n    .last()\n    .{{notion:block_property:fY%5Er:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} "
+      },
+      "config_formatted": "Formula: `{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}\n    .sort(current.{{notion:block_property:fY%5Er:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}})\n    .last()\n    .{{notion:block_property:fY%5Er:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}} `"
+    },
     "Due": {
       "type": "date",
       "id": "y%3B%3EJ",
@@ -467,6 +572,14 @@
       "id": "yM%5Cd",
       "config": {},
       "config_formatted": ""
+    },
+    "Logged Time (mins)": {
+      "type": "formula",
+      "id": "yXe%5B",
+      "config": {
+        "expression": "{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum()"
+      },
+      "config_formatted": "Formula: `{{notion:block_property:tvv%5C:00000000-0000-0000-0000-000000000000:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}.map(current.{{notion:block_property:CDEJ:20425796-66bd-8143-b976-eff463de13da:9d802d7a-a3dc-49fb-bb44-062c1e2e23d0}}).sum()`"
     },
     "\ud83d\udcdd BASIC INFO \ud83d\udcdd": {
       "type": "rich_text",
