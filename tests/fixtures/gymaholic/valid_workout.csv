@@ -1,0 +1,33 @@
+
+;-----------------
+;TOMO B Strength
+;-----------------
+;Date;Jan 14., 06:04
+;Duration;1h:28m
+;KCAL;495
+;Heart rate;116 bpm
+
+#;Side Plank;;TIME;REST
+1;;;0:30;0:00
+2;;;0:30;0:00
+3;;;0:30;0:00
+
+#;Standing Military Press;REPS;TIME;REST
+W;;65 lbs x 8;;0:00
+W;;75 lbs x 6;;0:00
+1;;95 lbs x 5;;0:00
+2;;95 lbs x 5;;0:00
+3;;95 lbs x 5;;0:00
+
+#;Swing Two Hands;REPS;TIME;REST
+1;;35 lbs x 20;;0:00
+2;;35 lbs x 20;;0:00
+3;;35 lbs x 12;;0:00
+
+#;Inverted Row;REPS;TIME;REST
+1;; x 8;;0:00
+2;; x 8;;0:00
+3;; x 8;;0:00
+
+#;Bird Dog;REPS;TIME;REST
+1;;1 lbs x 8;;0:00

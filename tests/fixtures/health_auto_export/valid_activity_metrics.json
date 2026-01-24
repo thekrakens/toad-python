@@ -1,0 +1,48 @@
+{
+  "data": {
+    "metrics": [
+      {
+        "name": "dietary_energy",
+        "units": "kcal",
+        "data": [
+          {
+            "date": "2026-01-17 00:00:00 -0800",
+            "source": "Lose It!",
+            "qty": 2100.5
+          }
+        ]
+      },
+      {
+        "name": "active_energy",
+        "units": "kcal",
+        "data": [
+          {
+            "date": "2026-01-17 00:00:00 -0800",
+            "source": "Dylan's Apple Watch",
+            "qty": 1750.25
+          }
+        ]
+      },
+      {
+        "name": "weight_body_mass",
+        "units": "lb",
+        "data": [
+          {
+            "date": "2026-01-17 00:00:00 -0800",
+            "qty": 175.5
+          }
+        ]
+      },
+      {
+        "name": "body_fat_percentage",
+        "units": "%",
+        "data": [
+          {
+            "date": "2026-01-17 00:00:00 -0800",
+            "qty": 15.2
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "data": {
+    "workouts": [
+      {
+        "name": "Missing Required Fields"
+        // Missing id, start, end, duration
+      }
