@@ -140,7 +140,7 @@ class EventDrivenHealthHandler:
                 )
 
                 # Update in Notion
-                result = self.notion_client.pages.update(
+                result = self.notion_client.client.pages.update(
                     page_id=matched_workout["id"],
                     properties=updated_properties
                 )
@@ -237,7 +237,7 @@ class EventDrivenHealthHandler:
                     )
 
                     # Update in Notion
-                    self.notion_client.pages.update(
+                    self.notion_client.client.pages.update(
                         page_id=matched_workout["id"],
                         properties=updated_properties
                     )
@@ -381,12 +381,11 @@ class EventDrivenHealthHandler:
         }
 
         try:
-            response = self.notion_client.databases.query(
+            # Use TOADNotionClient's method instead of accessing client directly
+            workouts = self.notion_client.get_database_pages(
                 database_id=workouts_db_id,
-                filter=filter_params
+                filter_dict=filter_params
             )
-
-            workouts = response.get("results", [])
 
             return workouts
 
