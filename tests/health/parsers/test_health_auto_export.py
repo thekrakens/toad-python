@@ -1,7 +1,7 @@
 """Tests for HealthAutoExport JSON parser."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from toad.health.parsers.health_auto_export import HealthAutoExportParser
@@ -26,9 +26,10 @@ class TestHealthAutoExportParser:
         assert len(workouts) == 4
 
         # Verify first workout (Climbing)
+        # Input: "2026-01-17 10:51:41 -0800" (PST) -> UTC: 18:51:41
         climbing = workouts[0]
         assert climbing.workout_type == "Climb"
-        assert climbing.date == datetime(2026, 1, 17, 10, 51, 41)
+        assert climbing.date == datetime(2026, 1, 17, 18, 51, 41, tzinfo=timezone.utc)
         assert climbing.duration_minutes == pytest.approx(249.47, rel=0.01)  # 14968.47 seconds / 60
         assert climbing.calories == pytest.approx(1379.96, rel=0.01)
         assert climbing.avg_heart_rate == pytest.approx(117.82, rel=0.01)
@@ -37,27 +38,30 @@ class TestHealthAutoExportParser:
         assert "28842056-B969-46AE-ABEF-4E0421E38B9B" in climbing.notes
 
         # Verify second workout (Running)
+        # Input: "2026-01-15 06:30:00 -0800" (PST) -> UTC: 14:30:00
         running = workouts[1]
         assert running.workout_type == "Run"
-        assert running.date == datetime(2026, 1, 15, 6, 30, 0)
+        assert running.date == datetime(2026, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
         assert running.duration_minutes == pytest.approx(45.5, rel=0.01)  # 2730 seconds / 60
         assert running.distance_miles == pytest.approx(5.2, rel=0.01)
         assert running.calories == 450
         assert running.avg_heart_rate == pytest.approx(145.5, rel=0.01)
 
         # Verify third workout (Strength Training)
+        # Input: "2026-01-16 18:00:00 -0800" (PST) -> UTC: 02:00:00 next day
         strength = workouts[2]
         assert strength.workout_type == "Strength"
-        assert strength.date == datetime(2026, 1, 16, 18, 0, 0)
+        assert strength.date == datetime(2026, 1, 17, 2, 0, 0, tzinfo=timezone.utc)
         assert strength.duration_minutes == 90  # 5400 seconds / 60
         assert strength.calories == 320
         assert strength.avg_heart_rate == pytest.approx(125.3, rel=0.01)
         assert strength.distance_miles is None
 
         # Verify fourth workout (Hiking)
+        # Input: "2026-01-14 08:00:00 -0800" (PST) -> UTC: 16:00:00
         hiking = workouts[3]
         assert hiking.workout_type == "Hike"
-        assert hiking.date == datetime(2026, 1, 14, 8, 0, 0)
+        assert hiking.date == datetime(2026, 1, 14, 16, 0, 0, tzinfo=timezone.utc)
         assert hiking.duration_minutes == 120  # 7200 seconds / 60
         assert hiking.distance_miles == pytest.approx(6.5, rel=0.01)
         assert hiking.calories == 650
@@ -171,13 +175,14 @@ class TestHealthAutoExportParser:
         workouts = parser.parse(fixture_path)
 
         climbing = next(w for w in workouts if w.workout_type == "Climb")
-        # start: "2026-01-17 10:51:41 -0800"
-        assert climbing.date == datetime(2026, 1, 17, 10, 51, 41)
+        # start: "2026-01-17 10:51:41 -0800" -> UTC: 18:51:41
+        assert climbing.date == datetime(2026, 1, 17, 18, 51, 41, tzinfo=timezone.utc)
         assert climbing.date.year == 2026
         assert climbing.date.month == 1
         assert climbing.date.day == 17
-        assert climbing.date.hour == 10
+        assert climbing.date.hour == 18  # UTC hour
         assert climbing.date.minute == 51
+        assert climbing.date.tzinfo == timezone.utc
 
     def test_workout_id_in_notes(self):
         """Test that workout ID is stored in notes for deduplication."""
@@ -193,3 +198,27 @@ class TestHealthAutoExportParser:
 
         running = next(w for w in workouts if w.workout_type == "Run")
         assert "ABC12345-1234-5678-ABCD-123456789ABC" in running.notes
+
+    def test_timezone_conversion_to_utc(self):
+        """Test that PST times are correctly converted to UTC.
+
+        Input times include timezone offset (e.g., -0800 for PST).
+        Parser should convert these to UTC for consistent storage.
+        """
+        parser = HealthAutoExportParser()
+        fixture_path = FIXTURES_DIR / "valid_workouts.json"
+
+        workouts = parser.parse(fixture_path)
+
+        # All workouts should have UTC timezone
+        for workout in workouts:
+            assert workout.date.tzinfo == timezone.utc
+
+        # Verify specific conversion: 10:51:41 PST = 18:51:41 UTC
+        climbing = next(w for w in workouts if w.workout_type == "Climb")
+        assert climbing.date.hour == 18  # 10 + 8 = 18
+
+        # Verify: 18:00:00 PST = 02:00:00 UTC (next day)
+        strength = next(w for w in workouts if w.workout_type == "Strength")
+        assert strength.date.hour == 2
+        assert strength.date.day == 17  # Crossed midnight to next day

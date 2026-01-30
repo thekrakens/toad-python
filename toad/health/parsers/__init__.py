@@ -1,18 +1,14 @@
 """Workout data parsers for TOAD Health module.
 
-This package contains parsers for various workout data formats:
-- Gymaholic CSV exports
-- Apple Health XML exports
-- Health Auto Export JSON files
-
 Each parser converts source data into standardized WorkoutData objects.
 """
 
-# Parser imports will be added as they're implemented
-# from toad.health.parsers.gymaholic import GymaholicParser
-# from toad.health.parsers.apple_health import AppleHealthParser
+from toad.health.parsers.gymaholic import GymaholicParser
+from toad.health.parsers.health_auto_export import HealthAutoExportParser
+from toad.health.parsers.health_auto_export_metrics import HealthAutoExportMetricsParser
 
 __all__ = [
-    # 'GymaholicParser',
-    # 'AppleHealthParser',
+    'GymaholicParser',
+    'HealthAutoExportParser',
+    'HealthAutoExportMetricsParser',
 ]

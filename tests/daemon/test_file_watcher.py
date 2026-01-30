@@ -3,11 +3,10 @@
 import pytest
 import time
 from pathlib import Path
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
 from toad.daemon.file_watcher import (
     FileWatcher,
-    FileProcessor,
     InboxFileHandler,
     FileType,
 )
@@ -267,83 +266,3 @@ class TestFileWatcher:
         # Directories should have been created
         for dir_path in missing_dirs:
             assert dir_path.exists()
-
-
-class TestFileProcessor:
-    """Tests for FileProcessor."""
-
-    def test_register_handler(self):
-        """Test registering file type handlers."""
-        processor = FileProcessor()
-        mock_handler = Mock()
-
-        processor.register_handler(FileType.GYMAHOLIC_CSV, mock_handler)
-
-        assert FileType.GYMAHOLIC_CSV in processor.handlers
-        assert processor.handlers[FileType.GYMAHOLIC_CSV] == mock_handler
-
-    def test_process_file_calls_handler(self, tmp_path):
-        """Test processing file calls registered handler."""
-        processor = FileProcessor()
-        mock_handler = Mock()
-
-        processor.register_handler(FileType.GYMAHOLIC_CSV, mock_handler)
-
-        file_path = tmp_path / "workout.csv"
-        file_path.write_text("data")
-
-        processor.process_file(file_path, FileType.GYMAHOLIC_CSV)
-
-        mock_handler.assert_called_once_with(file_path)
-
-    def test_process_file_no_handler(self, tmp_path):
-        """Test processing file with no registered handler."""
-        processor = FileProcessor()
-
-        file_path = tmp_path / "workout.csv"
-        file_path.write_text("data")
-
-        # Should not raise exception
-        processor.process_file(file_path, FileType.GYMAHOLIC_CSV)
-
-    def test_process_file_handler_exception(self, tmp_path):
-        """Test processing file when handler raises exception."""
-        processor = FileProcessor()
-
-        def failing_handler(path):
-            raise ValueError("Test error")
-
-        processor.register_handler(FileType.GYMAHOLIC_CSV, failing_handler)
-
-        file_path = tmp_path / "workout.csv"
-        file_path.write_text("data")
-
-        # Should not raise exception (error is logged)
-        processor.process_file(file_path, FileType.GYMAHOLIC_CSV)
-
-    def test_multiple_handlers(self, tmp_path):
-        """Test registering and using multiple handlers."""
-        processor = FileProcessor()
-
-        handler1 = Mock()
-        handler2 = Mock()
-        handler3 = Mock()
-
-        processor.register_handler(FileType.GYMAHOLIC_CSV, handler1)
-        processor.register_handler(FileType.HEALTH_ACTIVITY_CSV, handler2)
-        processor.register_handler(FileType.HEALTH_WORKOUT_JSON, handler3)
-
-        file1 = tmp_path / "workout.csv"
-        file2 = tmp_path / "activity.csv"
-        file3 = tmp_path / "workouts.json"
-
-        for f in [file1, file2, file3]:
-            f.write_text("data")
-
-        processor.process_file(file1, FileType.GYMAHOLIC_CSV)
-        processor.process_file(file2, FileType.HEALTH_ACTIVITY_CSV)
-        processor.process_file(file3, FileType.HEALTH_WORKOUT_JSON)
-
-        handler1.assert_called_once_with(file1)
-        handler2.assert_called_once_with(file2)
-        handler3.assert_called_once_with(file3)

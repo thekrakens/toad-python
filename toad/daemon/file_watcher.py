@@ -7,11 +7,14 @@ Uses watchdog library for cross-platform filesystem event monitoring.
 import logging
 import time
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileMovedEvent
+from watchdog.events import FileSystemEventHandler
 
 logger = logging.getLogger(__name__)
+
+# Timing constants
+FILE_WRITE_DEBOUNCE_SECONDS = 0.5  # Delay to ensure file is fully written
 
 
 class FileType:
@@ -54,7 +57,7 @@ class InboxFileHandler(FileSystemEventHandler):
             return
 
         # Small delay to ensure file is fully written
-        time.sleep(0.5)
+        time.sleep(FILE_WRITE_DEBOUNCE_SECONDS)
 
         # Verify file still exists and is complete
         if not file_path.exists():
@@ -111,8 +114,8 @@ class InboxFileHandler(FileSystemEventHandler):
         # Check by directory structure
         parts = file_path.parts
 
-        # Gymaholic CSV in inbox/gymaholic/
-        if 'gymaholic' in parts and file_path.suffix.lower() == '.csv':
+        # Gymaholic CSV in inbox/ (any CSV in inbox is assumed to be Gymaholic)
+        if 'inbox' in parts and file_path.suffix.lower() == '.csv':
             return FileType.GYMAHOLIC_CSV
 
         # Health Auto Export Activity (TOAD_Activity directory)
@@ -185,51 +188,3 @@ class FileWatcher:
     def is_alive(self) -> bool:
         """Check if watcher is running."""
         return self.observer.is_alive()
-
-
-class FileProcessor:
-    """Processes files detected by the watcher."""
-
-    def __init__(self):
-        """Initialize file processor."""
-        self.handlers: Dict[str, Callable[[Path], None]] = {}
-
-    def register_handler(self, file_type: str, handler: Callable[[Path], None]):
-        """
-        Register a handler for a specific file type.
-
-        Args:
-            file_type: FileType constant
-            handler: Function to process file
-        """
-        self.handlers[file_type] = handler
-        logger.info(f"[PROCESSOR] Registered handler for: {file_type}")
-
-    def process_file(self, file_path: Path, file_type: str):
-        """
-        Process a file using registered handler.
-
-        Args:
-            file_path: Path to file
-            file_type: FileType constant
-        """
-        handler = self.handlers.get(file_type)
-
-        if handler is None:
-            logger.error(f"[PROCESSOR] No handler registered for: {file_type}")
-            return
-
-        try:
-            logger.info(
-                f"[PROCESSOR] Processing {file_type}: {file_path.name}"
-            )
-            handler(file_path)
-            logger.info(
-                f"[PROCESSOR] Successfully processed: {file_path.name}"
-            )
-
-        except Exception as e:
-            logger.error(
-                f"[PROCESSOR] Failed to process {file_path.name}: {e}",
-                exc_info=True
-            )

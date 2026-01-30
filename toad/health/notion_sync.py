@@ -11,6 +11,10 @@ from datetime import date, datetime
 
 from toad.notion_client import TOADNotionClient
 from toad.health.models import DailyActivityMetrics, WorkoutData
+from toad.health.workout_targets import WorkoutTargetsFetcher
+from toad.health.exercise_checker import ExerciseTargetChecker
+from toad.health.progression_tracker import ProgressionTracker
+from toad.health.workout_summary import WorkoutSummaryFormatter
 from toad.config import Config
 
 logger = logging.getLogger(__name__)
@@ -27,6 +31,10 @@ class HealthNotionSync:
             notion_client: Configured TOAD Notion client
         """
         self.client = notion_client
+        self.targets_fetcher = WorkoutTargetsFetcher(notion_client)
+        self.exercise_checker = ExerciseTargetChecker()
+        self.progression_tracker = ProgressionTracker(notion_client)
+        self.summary_formatter = WorkoutSummaryFormatter()
 
     def update_habit_tracker_metrics(self, metrics: DailyActivityMetrics) -> Dict[str, Any]:
         """
@@ -279,10 +287,9 @@ class HealthNotionSync:
         """Generate a summary string for a workout.
 
         Creates a concise summary of the workout for the Notion Name field:
-        - For Gymaholic with notes (e.g., "TOMO A Strength"): Use notes
-        - For strength workouts with exercises: List exercises with set counts
-        - For cardio workouts: Include distance/duration if available
-        - Fallback to workout type
+        - Format: "{Name} [YYYYMMDD-HHMMSS]"
+        - For Gymaholic: "TOMO A Strength [20260130-103045]"
+        - For HealthAutoExport: "Outdoor Walk [20260130-103045]"
 
         Args:
             workout: WorkoutData object to summarize
@@ -290,51 +297,27 @@ class HealthNotionSync:
         Returns:
             Summary string suitable for Notion Name field
         """
-        # Strategy 1: Gymaholic workouts with notes (e.g., "TOMO A Strength")
+        # Get the base workout name
         if workout.source == "Gymaholic" and workout.notes:
-            return workout.notes
+            # Gymaholic: Use notes (e.g., "TOMO A Strength")
+            base_name = workout.notes
+        else:
+            # HealthAutoExport and others: Use workout type
+            base_name = workout.workout_type
 
-        # Strategy 2: Strength workouts with exercise details
-        if workout.exercises and len(workout.exercises) > 0:
-            exercise_summaries = []
-            for exercise in workout.exercises:
-                # Format: "Exercise Name (X sets)"
-                exercise_summaries.append(f"{exercise.name} ({exercise.sets} sets)")
+        # Format timestamp: [YYYYMMDD-HHMMSS]
+        timestamp = workout.date.strftime("%Y%m%d-%H%M%S")
 
-            return ", ".join(exercise_summaries)
-
-        # Strategy 3: Cardio workouts with distance/duration
-        # Check if workout type contains cardio keywords
-        cardio_keywords = ["Run", "Climb", "Hike", "Walk", "Bike", "Swim"]
-        is_cardio = any(keyword.lower() in workout.workout_type.lower() for keyword in cardio_keywords)
-
-        if is_cardio:
-            parts = [workout.workout_type]
-
-            if workout.distance_miles:
-                parts.append(f"{workout.distance_miles:.1f}mi")
-
-            if workout.duration_minutes:
-                hours = int(workout.duration_minutes // 60)
-                mins = int(workout.duration_minutes % 60)
-                if hours > 0:
-                    parts.append(f"{hours}h{mins}m")
-                else:
-                    parts.append(f"{mins}m")
-
-            if workout.avg_heart_rate:
-                parts.append(f"{int(workout.avg_heart_rate)}bpm avg")
-
-            return " - ".join(parts)
-
-        # Strategy 4: Fallback to workout type (avoid showing UUIDs)
-        return workout.workout_type
+        return f"{base_name} [{timestamp}]"
 
     def sync_workout(self, workout: WorkoutData) -> Dict[str, Any]:
         """Sync a workout to the Workouts database.
 
-        Creates a new workout entry or updates an existing one if it's a duplicate.
-        Also updates relevant checkboxes in the Habit Tracker.
+        NEW FLOW:
+        1. Generate workout summary with progression tracking (in memory)
+        2. Build properties including summary
+        3. Create/update in Notion (single atomic operation)
+        4. Update habit tracker checkboxes
 
         Args:
             workout: WorkoutData object to sync
@@ -346,6 +329,7 @@ class HealthNotionSync:
                 - is_duplicate: bool
                 - updated_fields: List of fields updated
                 - habit_tracker_updated: bool
+                - workout_summary: str (generated summary)
         """
         database_id = Config.NOTION_WORKOUTS_DATABASE_ID
         if not database_id:
@@ -355,71 +339,147 @@ class HealthNotionSync:
                 "error": "NOTION_WORKOUTS_DATABASE_ID not configured"
             }
 
-        # Check for duplicates
-        existing_page_id = self.is_workout_duplicate(workout)
+        logger.info(f"[SYNC] Processing workout: {workout.workout_type} from {workout.source}")
 
-        # Generate summary
-        summary = self.generate_workout_summary(workout)
+        # Generate workout summary (this includes progression tracking for Gymaholic)
+        logger.info(f"[SYNC] Generating workout summary...")
+        workout_summary = self._generate_workout_summary_with_progression(workout)
+        logger.info(f"[SYNC] Summary generated ({len(workout_summary)} chars)")
 
-        # Build Notion properties (no relation needed)
-        properties = self._build_workout_properties(workout, summary)
+        # Generate name for Notion title
+        name_summary = self.generate_workout_summary(workout)
 
-        # Create or update workout entry
-        if existing_page_id:
-            # Update existing workout
-            logger.info(f"Updating existing workout: {existing_page_id}")
-            result = self.client.update_page_properties_smart(existing_page_id, properties)
-            result["workout_page_id"] = existing_page_id
-            result["is_duplicate"] = True
-        else:
-            # Create new workout entry
-            logger.info(f"Creating new workout: {workout.workout_type} on {workout.date}")
-            try:
-                response = self.client.client.pages.create(
-                    parent={"database_id": database_id},
-                    properties=properties
-                )
-                result = {
-                    "success": True,
-                    "workout_page_id": response["id"],
-                    "is_duplicate": False,
-                    "updated_fields": list(properties.keys()),
-                    "unchanged_fields": [],
-                    "changes": {}
-                }
-            except Exception as e:
-                logger.error(f"Failed to create workout: {e}")
-                return {
-                    "success": False,
-                    "error": str(e)
-                }
+        # Build Notion properties including summary
+        properties = self._build_workout_properties(workout, name_summary, workout_summary)
+
+        # Create new workout entry (handler is responsible for reconciliation/merging)
+        logger.info(f"Creating new workout: {workout.workout_type} on {workout.date}")
+        try:
+            response = self.client.client.pages.create(
+                parent={"database_id": database_id},
+                properties=properties
+            )
+            result = {
+                "success": True,
+                "workout_page_id": response["id"],
+                "is_duplicate": False,
+                "updated_fields": list(properties.keys()),
+                "unchanged_fields": [],
+                "changes": {}
+            }
+        except Exception as e:
+            logger.error(f"Failed to create workout: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
         # Update Habit Tracker checkboxes
         if result["success"]:
+            logger.info(f"[SYNC] Workout created successfully, updating habit tracker")
             habit_result = self._update_habit_tracker_checkboxes(workout)
             result["habit_tracker_updated"] = habit_result["success"]
+            result["workout_summary"] = workout_summary
+            logger.info(f"[SYNC] ✅ Workout sync complete")
+        else:
+            logger.warning(f"[SYNC] ⚠️  Workout creation failed")
 
         return result
 
-    def _build_workout_properties(self, workout: WorkoutData, summary: str) -> Dict[str, Any]:
+    def _generate_workout_summary_with_progression(self, workout: WorkoutData) -> str:
+        """Generate workout summary with progression tracking (in memory).
+
+        For Gymaholic workouts with exercises:
+        1. Fetch targets from Workouts database
+        2. Enrich exercises with hit/miss indicators
+        3. Check progression (3 consecutive hits)
+        4. Generate formatted markdown summary
+
+        For other workouts (cardio, HealthAutoExport without exercises):
+        - Generate simple summary with metadata only
+
+        Args:
+            workout: WorkoutData object
+
+        Returns:
+            Markdown summary string for Workout Summary field
+        """
+        # For non-Gymaholic workouts or workouts without exercises, generate simple summary
+        if workout.source != "Gymaholic" or not workout.exercises or not workout.notes:
+            logger.info(f"[SUMMARY] Generating simple cardio summary (no exercises)")
+            return self.summary_formatter.generate_cardio_summary(workout)
+
+        # Gymaholic workout with exercises - generate full summary with progression
+        workout_name = workout.notes  # e.g., "TOMO A Strength"
+        workout_date = workout.date.date() if hasattr(workout.date, 'date') else workout.date
+
+        logger.info(f"[SUMMARY] Generating summary with progression for {workout_name}")
+
+        # Step 1: Fetch targets from Notion
+        targets = self.targets_fetcher.fetch_targets(workout_name)
+
+        if not targets:
+            logger.info(f"[SUMMARY] No targets found for {workout_name} - generating summary without targets")
+            # Generate summary without targets (no ✅/⚠️ indicators)
+            return self.summary_formatter.generate_summary(workout, enriched_exercises=None)
+
+        # Step 2: Enrich exercises with target comparison
+        enriched_exercises = self.exercise_checker.enrich_exercises(
+            workout.exercises,
+            targets
+        )
+
+        # Step 3: Check progression (which exercises are ready to increase)
+        exercise_names = [ex.name for ex in enriched_exercises if ex.has_target]
+        ready_to_increase = self.progression_tracker.check_all_exercises(
+            workout_name,
+            exercise_names,
+            workout_date
+        )
+
+        # Step 4: Generate formatted markdown summary
+        summary = self.summary_formatter.generate_summary(
+            workout,
+            enriched_exercises,
+            ready_to_increase
+        )
+
+        # Log progression alerts
+        if ready_to_increase:
+            for exercise_name in ready_to_increase:
+                logger.info(f"[SUMMARY] 🎯 {exercise_name} ready to increase!")
+
+        logger.info(f"[SUMMARY] Generated summary: {len(enriched_exercises)} exercises, {len(ready_to_increase)} ready to progress")
+
+        return summary
+
+    def _build_workout_properties(self, workout: WorkoutData, name_summary: str, workout_summary: str) -> Dict[str, Any]:
         """Build Notion properties dict for a workout.
 
         Args:
             workout: WorkoutData object
-            summary: Pre-generated summary string
+            name_summary: Summary string for Name/title field
+            workout_summary: Full workout summary markdown for Workout Summary field
 
         Returns:
             Dict of Notion properties in API format
         """
-        # Format date for Notion
+        # Format date for Notion (date-only)
         date_str = workout.date.strftime("%Y-%m-%d")
+
+        # Format datetime for Notion (full datetime with timezone)
+        # Notion expects ISO 8601 format: YYYY-MM-DDTHH:MM:SS.000Z
+        datetime_str = workout.date.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         properties = {
             "Name": {
-                "title": [{"text": {"content": summary}}]
+                "title": [{"text": {"content": name_summary}}]
             },
             "Date": {
                 "date": {"start": date_str}
+            },
+            "Workout Time": {
+                "date": {"start": datetime_str}
             },
             "Type": {
                 "select": {"name": workout.workout_type}
@@ -428,6 +488,12 @@ class HealthNotionSync:
                 "select": {"name": workout.source}
             }
         }
+
+        # Add Summary field (workout summary with progression tracking)
+        if workout_summary:
+            properties["Summary"] = {
+                "rich_text": [{"text": {"content": workout_summary}}]
+            }
 
         # Add optional fields
         if workout.duration_minutes is not None:

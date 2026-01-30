@@ -141,7 +141,17 @@ class HealthAutoExportParser:
         if "distance" in workout:
             dist_data = workout["distance"]
             if isinstance(dist_data, dict) and "qty" in dist_data:
-                distance_miles = round(dist_data["qty"], 2)
+                distance_qty = dist_data["qty"]
+                units = dist_data.get("units", "km")  # Default to km
+
+                # Convert to miles if needed
+                if units == "km":
+                    distance_miles = round(distance_qty * 0.621371, 2)
+                elif units in ["mi", "miles"]:
+                    distance_miles = round(distance_qty, 2)
+                else:
+                    # Unknown units, log warning and assume km
+                    distance_miles = round(distance_qty * 0.621371, 2)
 
         # Build notes with workout ID for deduplication
         notes = None
@@ -188,11 +198,11 @@ class HealthAutoExportParser:
             datetime object (timezone-aware, UTC)
         """
         # Format: "2026-01-17 10:51:41 -0800"
-        # Parse as UTC (assuming the data is normalized to UTC)
-        date_part = date_str.rsplit(' ', 1)[0]  # Remove timezone offset
-
+        # Parse with timezone offset and convert to UTC
         try:
-            dt = datetime.strptime(date_part, "%Y-%m-%d %H:%M:%S")
-            return dt.replace(tzinfo=timezone.utc)
+            # Parse the full datetime including timezone offset
+            dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S %z")
+            # Convert to UTC
+            return dt.astimezone(timezone.utc)
         except ValueError as e:
             raise ValueError(f"Failed to parse date '{date_str}': {e}")

@@ -5,7 +5,6 @@ Main daemon class that coordinates file watching and health data processing.
 
 import logging
 import signal
-import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -22,6 +21,9 @@ from toad.daemon.file_watcher import FileWatcher
 from toad.daemon.event_driven_handler import EventDrivenHealthHandler
 
 logger = logging.getLogger(__name__)
+
+# Timing constants
+MAIN_LOOP_SLEEP_SECONDS = 1  # Main loop poll interval
 
 
 class TOADDaemon:
@@ -109,7 +111,7 @@ class TOADDaemon:
         try:
             # Main loop - just keep alive while watcher runs in background
             while self.is_running:
-                time.sleep(1)
+                time.sleep(MAIN_LOOP_SLEEP_SECONDS)
         except KeyboardInterrupt:
             logger.info("[DAEMON] Received keyboard interrupt")
         finally:

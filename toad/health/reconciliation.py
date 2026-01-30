@@ -5,7 +5,7 @@ even when they arrive at different times (e.g., late Gymaholic export).
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from toad.health.models import WorkoutData
@@ -38,14 +38,14 @@ TYPE_EQUIVALENTS = {
 class WorkoutReconciler:
     """Reconciles workouts from multiple sources."""
 
-    def __init__(self, tolerance_minutes: int = 30):
+    def __init__(self, tolerance_seconds: int = 5):
         """
         Initialize reconciler.
 
         Args:
-            tolerance_minutes: Time window for matching workouts (default 30 min)
+            tolerance_seconds: Time window for matching workouts (default 5 seconds)
         """
-        self.tolerance_minutes = tolerance_minutes
+        self.tolerance_seconds = tolerance_seconds
 
     def match_workout(
         self,
@@ -88,7 +88,7 @@ class WorkoutReconciler:
         Criteria (ALL must match):
         1. Same date (YYYY-MM-DD)
         2. Compatible workout type
-        3. Time overlap (within tolerance window)
+        3. DateTime within ±5 seconds
 
         Args:
             new_workout: New workout data
@@ -100,17 +100,31 @@ class WorkoutReconciler:
         # Extract existing workout properties
         try:
             existing_type = self._extract_property(existing_workout, "Type", "select")
-            existing_date_prop = self._extract_property(existing_workout, "Date", "date")
 
-            if not existing_type or not existing_date_prop:
+            # Try Workout Time property first (more precise), fall back to Date
+            existing_datetime_prop = self._extract_property(existing_workout, "Workout Time", "date")
+
+            if not existing_type:
                 return False
 
-            # Parse existing workout date
-            existing_start = existing_date_prop.get("start")
-            if not existing_start:
-                return False
+            # Get existing workout datetime
+            existing_dt = None
+            if existing_datetime_prop:
+                # Workout Time property exists (ISO 8601 with time)
+                existing_start = existing_datetime_prop.get("start")
+                if existing_start:
+                    existing_dt = datetime.fromisoformat(existing_start.replace("Z", "+00:00"))
 
-            existing_dt = datetime.fromisoformat(existing_start.replace("Z", "+00:00"))
+            # If no DateTime property, try Date property (legacy)
+            if not existing_dt:
+                existing_date_prop = self._extract_property(existing_workout, "Date", "date")
+                if existing_date_prop:
+                    existing_start = existing_date_prop.get("start")
+                    if existing_start:
+                        existing_dt = datetime.fromisoformat(existing_start.replace("Z", "+00:00"))
+
+            if not existing_dt:
+                return False
 
             # Check date match (same calendar day)
             if not self._same_date(new_workout.date, existing_dt):
@@ -120,7 +134,7 @@ class WorkoutReconciler:
             if not self._compatible_types(new_workout.workout_type, existing_type):
                 return False
 
-            # Check time overlap
+            # Check DateTime within ±5 seconds
             if not self._time_overlap(new_workout, existing_workout, existing_dt):
                 return False
 
@@ -129,6 +143,12 @@ class WorkoutReconciler:
         except Exception as e:
             logger.warning(f"[RECONCILIATION] Error checking match: {e}")
             return False
+
+    def _ensure_timezone_aware(self, dt: datetime) -> datetime:
+        """Ensure datetime is timezone-aware (assumes UTC if naive)."""
+        if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
 
     def _same_date(self, date1: datetime, date2: datetime) -> bool:
         """Check if two datetimes are on the same calendar day."""
@@ -166,7 +186,10 @@ class WorkoutReconciler:
         existing_start: datetime
     ) -> bool:
         """
-        Check if workouts overlap in time within tolerance.
+        Check if workouts have same DateTime within ±5 seconds.
+
+        Duplicates from the same source (Gymaholic + HealthAutoExport)
+        have identical DateTime values.
 
         Args:
             new_workout: New workout data
@@ -174,28 +197,17 @@ class WorkoutReconciler:
             existing_start: Existing workout start time
 
         Returns:
-            True if time overlaps within tolerance
+            True if DateTime within ±5 seconds
         """
-        # Calculate time difference between start times
-        time_diff_minutes = abs((new_workout.date - existing_start).total_seconds() / 60)
+        # Ensure both datetimes are timezone-aware before comparison
+        new_start = self._ensure_timezone_aware(new_workout.date)
+        existing_start = self._ensure_timezone_aware(existing_start)
 
-        if time_diff_minutes <= self.tolerance_minutes:
-            return True
+        # Calculate time difference in seconds
+        time_diff_seconds = abs((new_start - existing_start).total_seconds())
 
-        # Also check if workout durations overlap
-        if new_workout.duration_minutes and "Duration" in existing_workout.get("properties", {}):
-            existing_duration = self._extract_property(existing_workout, "Duration", "number")
-
-            if existing_duration:
-                new_end = new_workout.date + timedelta(minutes=new_workout.duration_minutes)
-                existing_end = existing_start + timedelta(minutes=existing_duration)
-
-                # Check if time ranges overlap
-                if (new_workout.date <= existing_end and
-                    new_end >= existing_start):
-                    return True
-
-        return False
+        # Match if within ±5 seconds
+        return time_diff_seconds <= self.tolerance_seconds
 
     def merge_workouts(
         self,
@@ -205,11 +217,10 @@ class WorkoutReconciler:
         """
         Merge new workout data into existing workout.
 
-        Strategy:
-        - Keep HealthAutoExport timestamp (more accurate from Apple Watch)
-        - Keep HealthAutoExport calories, HR, duration (measured data)
-        - Add Gymaholic exercise details (sets, reps, weight)
-        - Update summary/notes with exercise list
+        Priority-based merging strategy:
+        - Gymaholic has priority (detailed exercise data)
+        - If Gymaholic arrives first → HealthAutoExport only fills missing data
+        - If HealthAutoExport arrives first → Gymaholic replaces all properties
 
         Args:
             new_workout: New workout to merge
@@ -228,47 +239,70 @@ class WorkoutReconciler:
             f"[RECONCILIATION] Merging: {new_source} → {existing_source} workout"
         )
 
-        # If new is Gymaholic and existing is HealthAutoExport
-        if new_source == "Gymaholic" and existing_source == "Health Auto Export":
-            # Add exercise details (Gymaholic is primary for exercises)
-            if new_workout.exercises:
-                # Update source to indicate merged data
+        # Case 1: Gymaholic arrives first, HealthAutoExport arrives second
+        # → HealthAutoExport only fills missing data (don't overwrite Gymaholic)
+        if existing_source == "Gymaholic" and new_source == "Health Auto Export":
+            logger.info(
+                f"[RECONCILIATION] Gymaholic first - filling missing data from HealthAutoExport"
+            )
+
+            # Check existing values and only fill if missing
+            existing_calories = self._extract_property(existing_workout, "Calories", "number")
+            existing_hr = self._extract_property(existing_workout, "Avg HR", "number")
+            existing_duration = self._extract_property(existing_workout, "Duration", "number")
+
+            # Only add HealthAutoExport data if Gymaholic didn't have it
+            if not existing_calories and new_workout.calories:
+                updated_properties["Calories"] = {"number": new_workout.calories}
+                logger.info(f"[RECONCILIATION] Added missing Calories: {new_workout.calories}")
+
+            if not existing_hr and new_workout.avg_heart_rate:
+                updated_properties["Avg HR"] = {"number": new_workout.avg_heart_rate}
+                logger.info(f"[RECONCILIATION] Added missing Avg HR: {new_workout.avg_heart_rate}")
+
+            if not existing_duration and new_workout.duration_minutes:
+                updated_properties["Duration"] = {"number": new_workout.duration_minutes}
+                logger.info(f"[RECONCILIATION] Added missing Duration: {new_workout.duration_minutes}")
+
+            # Update source to indicate merged data (only if we added anything)
+            if updated_properties:
                 updated_properties["Source"] = {
                     "select": {"name": "Gymaholic + Health Auto Export"}
                 }
 
-                # Keep HealthAutoExport measured data (calories, HR, duration)
-                # but add notes about exercises
-                notes = self._format_exercise_summary(new_workout.exercises)
-                updated_properties["Notes"] = {
-                    "rich_text": [{"text": {"content": notes}}]
-                }
+        # Case 2: HealthAutoExport arrives first, Gymaholic arrives second
+        # → Gymaholic replaces all properties it has values for (Gymaholic priority)
+        elif existing_source == "Health Auto Export" and new_source == "Gymaholic":
+            logger.info(
+                f"[RECONCILIATION] HealthAutoExport first - Gymaholic replaces Name, Type, Source"
+            )
 
-                logger.info(
-                    f"[RECONCILIATION] Added {len(new_workout.exercises)} exercises "
-                    f"to existing workout"
-                )
+            # Gymaholic replaces Name, Type, and Source
+            # (The handler will provide these from the staging data's notion_properties)
+            # We need to return them here to tell the handler what to update
 
-        # If new is HealthAutoExport and existing is Gymaholic
-        elif new_source == "Health Auto Export" and existing_source == "Gymaholic":
-            # Update measured data from HealthAutoExport
-            if new_workout.calories:
-                updated_properties["Calories"] = {"number": new_workout.calories}
+            # Preserve HealthAutoExport measured data if Gymaholic doesn't have it
+            existing_calories = self._extract_property(existing_workout, "Calories", "number")
+            existing_hr = self._extract_property(existing_workout, "Avg HR", "number")
+            existing_distance = self._extract_property(existing_workout, "Distance", "number")
 
-            if new_workout.avg_heart_rate:
-                updated_properties["Avg HR"] = {"number": new_workout.avg_heart_rate}
+            # If HealthAutoExport had these values and Gymaholic doesn't, preserve them
+            if existing_calories and not new_workout.calories:
+                updated_properties["Calories"] = {"number": existing_calories}
+                logger.info(f"[RECONCILIATION] Preserving HealthAutoExport Calories: {existing_calories}")
 
-            if new_workout.duration_minutes:
-                updated_properties["Duration"] = {"number": new_workout.duration_minutes}
+            if existing_hr and not new_workout.avg_heart_rate:
+                updated_properties["Avg HR"] = {"number": existing_hr}
+                logger.info(f"[RECONCILIATION] Preserving HealthAutoExport Avg HR: {existing_hr}")
+
+            if existing_distance and not new_workout.distance_miles:
+                updated_properties["Distance"] = {"number": existing_distance}
+                logger.info(f"[RECONCILIATION] Preserving HealthAutoExport Distance: {existing_distance}")
 
             # Update source to indicate merged data
             updated_properties["Source"] = {
                 "select": {"name": "Gymaholic + Health Auto Export"}
             }
-
-            logger.info(
-                f"[RECONCILIATION] Updated measured data from HealthAutoExport"
-            )
 
         return updated_properties
 

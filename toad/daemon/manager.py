@@ -14,6 +14,13 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# Timing constants
+POST_SPAWN_VERIFY_DELAY = 1.0  # Seconds to wait after spawning before verifying
+STOP_TIMEOUT_DEFAULT = 10  # Default graceful shutdown timeout
+TERMINATION_POLL_INTERVAL = 0.1  # Poll interval during shutdown
+POST_KILL_DELAY = 0.5  # Delay after SIGKILL
+RESTART_DELAY = 1.0  # Delay between stop and start on restart
+
 
 class DaemonManager:
     """Manages the TOAD daemon process lifecycle."""
@@ -74,7 +81,7 @@ class DaemonManager:
             self._write_pid(process.pid)
 
             # Wait briefly to ensure daemon started
-            time.sleep(1)
+            time.sleep(POST_SPAWN_VERIFY_DELAY)
 
             # Verify daemon is still running
             if self.is_running():
@@ -97,7 +104,7 @@ class DaemonManager:
                 "pid": None
             }
 
-    def stop(self, timeout: int = 10) -> Dict[str, Any]:
+    def stop(self, timeout: int = STOP_TIMEOUT_DEFAULT) -> Dict[str, Any]:
         """
         Stop the daemon process.
 
@@ -135,12 +142,12 @@ class DaemonManager:
                         "success": True,
                         "message": f"Daemon stopped successfully (PID: {pid})"
                     }
-                time.sleep(0.1)
+                time.sleep(TERMINATION_POLL_INTERVAL)
 
             # If still running after timeout, force kill
             if self._is_process_running(pid):
                 os.kill(pid, signal.SIGKILL)
-                time.sleep(0.5)
+                time.sleep(POST_KILL_DELAY)
                 self._remove_pid()
                 return {
                     "success": True,
@@ -187,7 +194,7 @@ class DaemonManager:
                 return stop_result
 
             # Wait for full shutdown
-            time.sleep(1)
+            time.sleep(RESTART_DELAY)
 
         # Start
         return self.start()
@@ -219,7 +226,6 @@ class DaemonManager:
         if running and pid:
             try:
                 # Read process start time from /proc (Linux) or ps (macOS)
-                import subprocess
                 if sys.platform == "darwin":
                     # macOS: use ps to get elapsed time
                     result = subprocess.run(

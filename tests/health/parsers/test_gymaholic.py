@@ -4,7 +4,7 @@ These tests verify parsing of Gymaholic app CSV exports (semicolon-delimited for
 into standardized WorkoutData objects.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import pytest
 
@@ -124,12 +124,17 @@ class TestGymaholicParser:
         assert "TOMO B Strength" in (workout.notes or "")
 
     def test_date_parsing_format(self, parser, valid_csv_path):
-        """Test date parsing handles Gymaholic format (e.g., 'Jan 14., 06:04')."""
+        """Test date parsing handles Gymaholic format (e.g., 'Jan 14., 06:04').
+
+        Gymaholic times are device local time (PST), converted to UTC.
+        06:04 PST -> 14:04 UTC
+        """
         workout = parser.parse(valid_csv_path)
         assert workout.date.month == 1
         assert workout.date.day == 14
-        assert workout.date.hour == 6
+        assert workout.date.hour == 14  # UTC hour (6 + 8)
         assert workout.date.minute == 4
+        assert workout.date.tzinfo == timezone.utc
 
     def test_duration_parsing(self, parser, valid_csv_path):
         """Test duration parsing handles format '1h:28m'."""
