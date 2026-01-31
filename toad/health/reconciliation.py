@@ -85,10 +85,9 @@ class WorkoutReconciler:
         """
         Check if new workout matches existing workout.
 
-        Criteria (ALL must match):
-        1. Same date (YYYY-MM-DD)
-        2. Compatible workout type
-        3. DateTime within ±5 seconds
+        Criteria (checked in order):
+        1. Source ID match (if present) - definitive match
+        2. Same date + compatible type + DateTime within ±5 seconds
 
         Args:
             new_workout: New workout data
@@ -99,6 +98,16 @@ class WorkoutReconciler:
         """
         # Extract existing workout properties
         try:
+            # FIRST: Check Source ID (most reliable for deduplication)
+            if new_workout.source_id:
+                existing_source_id = self._extract_property(existing_workout, "Source ID", "rich_text")
+
+                if existing_source_id and new_workout.source_id == existing_source_id:
+                    logger.info(
+                        f"[RECONCILIATION] Source ID match: {new_workout.source_id}"
+                    )
+                    return True
+
             existing_type = self._extract_property(existing_workout, "Type", "select")
 
             # Try Workout Time property first (more precise), fall back to Date

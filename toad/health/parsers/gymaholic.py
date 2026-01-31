@@ -55,14 +55,23 @@ class GymaholicParser:
         exercises = self._extract_exercises(lines)
 
         # Build WorkoutData object
+        # Generate deterministic source_id from workout name and datetime
+        workout_name = metadata.get('workout_name', 'Unknown')
+        workout_date = metadata['date']
+        # Format: GYM:TOMO_B_Strength_20260114_0604
+        name_slug = workout_name.replace(' ', '_')
+        date_str = workout_date.strftime('%Y%m%d_%H%M')
+        source_id = f"GYM:{name_slug}_{date_str}"
+
         return WorkoutData(
-            date=metadata['date'],
+            date=workout_date,
             workout_type="Strength",  # Gymaholic is primarily strength training
             source="Gymaholic",
+            source_id=source_id,
             duration_minutes=metadata.get('duration'),
             calories=metadata.get('calories'),
             avg_heart_rate=metadata.get('heart_rate'),
-            notes=metadata.get('workout_name'),
+            notes=workout_name,  # Keep workout name in notes for display
             raw_file_path=str(file_path),
             exercises=exercises if exercises else None
         )

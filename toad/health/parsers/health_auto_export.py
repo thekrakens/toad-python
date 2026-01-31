@@ -153,21 +153,21 @@ class HealthAutoExportParser:
                     # Unknown units, log warning and assume km
                     distance_miles = round(distance_qty * 0.621371, 2)
 
-        # Build notes with workout ID for deduplication
-        notes = None
+        # Build source_id for deduplication
+        source_id = None
         if "id" in workout:
-            workout_id = workout["id"]
-            notes = f"HealthAutoExport ID: {workout_id}"
+            source_id = f"HAE:{workout['id']}"
 
         return WorkoutData(
             date=date,
             workout_type=workout_type,
             source="HealthAutoExport",
+            source_id=source_id,
             duration_minutes=duration_minutes,
             calories=calories,
             avg_heart_rate=avg_heart_rate,
             distance_miles=distance_miles,
-            notes=notes,
+            notes=None,  # HealthAutoExport doesn't have user notes
             raw_file_path=str(file_path),
             exercises=None  # HealthAutoExport doesn't include exercise details
         )

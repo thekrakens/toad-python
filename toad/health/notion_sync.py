@@ -489,6 +489,12 @@ class HealthNotionSync:
             }
         }
 
+        # Add Source ID for deduplication (HAE:uuid or GYM:name_datetime)
+        if workout.source_id:
+            properties["Source ID"] = {
+                "rich_text": [{"text": {"content": workout.source_id}}]
+            }
+
         # Add Summary field (workout summary with progression tracking)
         if workout_summary:
             properties["Summary"] = {

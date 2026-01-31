@@ -26,6 +26,7 @@ class FileManager:
         self.base_dir = base_dir
         self.inbox_dir = base_dir / "inbox"
         self.staging_dir = base_dir / "staging"
+        self.archive_dir = base_dir / "archive"
         self.processed_dir = base_dir / "processed"
         self.failed_dir = base_dir / "failed"
 
@@ -74,45 +75,75 @@ class FileManager:
             )
             return None
 
-    def move_to_processed(
+    def move_to_archive(
         self,
         source_file: Path,
-        preserve_structure: bool = True
+        source_type: str
+    ) -> Optional[Path]:
+        """
+        Move raw file to archive directory (flat structure).
+
+        Args:
+            source_file: Source file path (from inbox)
+            source_type: Source type prefix (e.g., 'GYMAHOLIC', 'TOAD_Workouts', 'TOAD_Activity')
+
+        Returns:
+            Path to file in archive, or None if move failed
+        """
+        try:
+            # Flat structure - no subdirectories
+            self.archive_dir.mkdir(parents=True, exist_ok=True)
+
+            # Build standardized filename: {SOURCE_TYPE}_{YYYYMMDD_HHMMSS}.{ext}
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ext = source_file.suffix
+            dest_file = self.archive_dir / f"{source_type}_{timestamp}{ext}"
+
+            # Move file
+            shutil.move(str(source_file), str(dest_file))
+
+            logger.info(
+                f"[FILE_MANAGER] Moved to archive: {source_file.name} -> {dest_file.name}"
+            )
+
+            return dest_file
+
+        except Exception as e:
+            logger.error(
+                f"[FILE_MANAGER] Failed to move {source_file.name} to archive: {e}"
+            )
+            return None
+
+    def move_to_processed(
+        self,
+        source_file: Path
     ) -> Optional[Path]:
         """
         Move file from staging to processed directory.
 
+        Uses simple structure: processed/YYMMDD/filename.json
+
         Args:
             source_file: Source file path in staging/
-            preserve_structure: If True, preserve service/category subdirs
 
         Returns:
             Path to file in processed, or None if move failed
         """
         try:
-            # Create date-based subdirectory
-            date_str = datetime.now().strftime("%Y-%m-%d")
+            # Create date-based subdirectory (YYMMDD format)
+            date_str = datetime.now().strftime("%y%m%d")
             dest_dir = self.processed_dir / date_str
-
-            if preserve_structure:
-                # Preserve service/category structure
-                try:
-                    rel_path = source_file.relative_to(self.staging_dir)
-                    dest_dir = dest_dir / rel_path.parent
-                except ValueError:
-                    pass  # File not in staging, use flat structure
-
             dest_dir.mkdir(parents=True, exist_ok=True)
 
-            # Handle filename collision with timestamp
-            dest_file = self._get_unique_filename(dest_dir, source_file.name)
+            # Just use the filename directly (already has timestamp)
+            dest_file = dest_dir / source_file.name
 
             # Move file
             shutil.move(str(source_file), str(dest_file))
 
             logger.info(
                 f"[FILE_MANAGER] Moved to processed: {source_file.name} -> "
-                f"{dest_file.relative_to(self.base_dir)}"
+                f"{date_str}/{dest_file.name}"
             )
 
             return dest_file
@@ -126,43 +157,24 @@ class FileManager:
     def move_to_failed(
         self,
         source_file: Path,
-        error_message: str,
-        preserve_structure: bool = True
+        error_message: str
     ) -> Tuple[Optional[Path], Optional[Path]]:
         """
-        Move file to failed directory with error log.
+        Move file to failed directory with error log (flat structure).
 
         Args:
             source_file: Source file path
             error_message: Error details to log
-            preserve_structure: If True, preserve service/category subdirs
 
         Returns:
             Tuple of (failed_file_path, error_log_path), or (None, None) if move failed
         """
         try:
-            # Create date-based subdirectory
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            dest_dir = self.failed_dir / date_str
-
-            if preserve_structure:
-                # Preserve service/category structure
-                try:
-                    # Try to get relative path from staging or inbox
-                    for parent in [self.staging_dir, self.inbox_dir]:
-                        try:
-                            rel_path = source_file.relative_to(parent)
-                            dest_dir = dest_dir / rel_path.parent
-                            break
-                        except ValueError:
-                            continue
-                except Exception:
-                    pass  # Use flat structure
-
-            dest_dir.mkdir(parents=True, exist_ok=True)
+            # Flat structure - no subdirectories
+            self.failed_dir.mkdir(parents=True, exist_ok=True)
 
             # Move file with unique name
-            dest_file = self._get_unique_filename(dest_dir, source_file.name)
+            dest_file = self._get_unique_filename(self.failed_dir, source_file.name)
             shutil.move(str(source_file), str(dest_file))
 
             # Create error log
@@ -174,11 +186,8 @@ Error: {error_message}
 """
             error_log.write_text(error_content)
 
-            logger.error(
-                f"[FILE_MANAGER] Moved to failed: {source_file.name} -> "
-                f"{dest_file.relative_to(self.base_dir)}"
-            )
-            logger.error(f"[FILE_MANAGER] Error log: {error_log.relative_to(self.base_dir)}")
+            logger.error(f"[FILE_MANAGER] Moved to failed: {dest_file.name}")
+            logger.error(f"[FILE_MANAGER] Error log: {error_log.name}")
 
             return dest_file, error_log
 

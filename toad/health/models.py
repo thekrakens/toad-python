@@ -17,18 +17,20 @@ class WorkoutData:
         date: Date and time of the workout
         workout_type: Type of workout (Strength, Run, Climb, Hike, Walk, Other)
         source: Data source (Gymaholic, Apple Health Export, etc.)
+        source_id: Unique identifier for deduplication (e.g., HAE:uuid or GYM:name_datetime)
         duration_minutes: Duration of workout in minutes (optional)
         calories: Calories burned during workout (optional)
         avg_heart_rate: Average heart rate in BPM (optional)
         distance_miles: Distance covered in miles for cardio workouts (optional)
         elevation_feet: Elevation gain in feet for hiking/climbing (optional)
-        notes: User notes or auto-generated summary (optional)
+        notes: User notes (workout name for Gymaholic) (optional)
         raw_file_path: Path to original data file (optional)
         exercises: List of exercises for strength workouts (optional)
     """
     date: datetime
     workout_type: str  # Strength, Run, Climb, Hike, Walk, Other
     source: str  # Gymaholic, Apple Health Export, Health Auto Export, Manual
+    source_id: Optional[str] = None  # HAE:{uuid} or GYM:{name}_{datetime}
     duration_minutes: Optional[int] = None
     calories: Optional[int] = None
     avg_heart_rate: Optional[int] = None
